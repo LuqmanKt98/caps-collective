@@ -5,6 +5,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import Navbar from '@/components/Navbar';
 import Link from 'next/link';
+import PasswordInput from '@/components/PasswordInput';
 import {
   SKILL_CATEGORIES,
   SkillCategory,
@@ -53,11 +54,17 @@ export default function AdminDashboardPage() {
   const [analyzingAI, setAnalyzingAI] = useState(false);
   const [aiMessage, setAiMessage] = useState('');
 
-  // Settings state
+  // Settings state - Password
   const [newPassword, setNewPassword] = useState('');
   const [confirmNewPassword, setConfirmNewPassword] = useState('');
   const [changingPassword, setChangingPassword] = useState(false);
-  const [settingsMessage, setSettingsMessage] = useState('');
+  const [passwordMessage, setPasswordMessage] = useState('');
+
+  // Settings state - Email
+  const [newEmail, setNewEmail] = useState('');
+  const [confirmNewEmail, setConfirmNewEmail] = useState('');
+  const [changingEmail, setChangingEmail] = useState(false);
+  const [emailMessage, setEmailMessage] = useState('');
 
   const [loading, setLoading] = useState(true);
 
@@ -363,17 +370,17 @@ export default function AdminDashboardPage() {
     if (!user) return;
 
     if (newPassword !== confirmNewPassword) {
-      setSettingsMessage('Error: Passwords do not match');
+      setPasswordMessage('Error: Passwords do not match');
       return;
     }
 
     if (newPassword.length < 6) {
-      setSettingsMessage('Error: Password must be at least 6 characters');
+      setPasswordMessage('Error: Password must be at least 6 characters');
       return;
     }
 
     setChangingPassword(true);
-    setSettingsMessage('');
+    setPasswordMessage('');
 
     try {
       const token = await user.getIdToken();
@@ -389,16 +396,69 @@ export default function AdminDashboardPage() {
       const data = await response.json();
 
       if (data.success) {
-        setSettingsMessage('Password changed successfully!');
+        setPasswordMessage('Password changed successfully!');
         setNewPassword('');
         setConfirmNewPassword('');
       } else {
-        setSettingsMessage(`Error: ${data.error}`);
+        setPasswordMessage(`Error: ${data.error}`);
       }
     } catch (error) {
-      setSettingsMessage('Failed to change password');
+      setPasswordMessage('Failed to change password');
     } finally {
       setChangingPassword(false);
+    }
+  };
+
+  const handleChangeEmail = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) return;
+
+    if (newEmail !== confirmNewEmail) {
+      setEmailMessage('Error: Emails do not match');
+      return;
+    }
+
+    if (!newEmail.includes('@')) {
+      setEmailMessage('Error: Please enter a valid email address');
+      return;
+    }
+
+    if (newEmail === user.email) {
+      setEmailMessage('Error: New email is the same as current email');
+      return;
+    }
+
+    setChangingEmail(true);
+    setEmailMessage('');
+
+    try {
+      const token = await user.getIdToken();
+      const response = await fetch('/api/admin/change-email', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({ newEmail }),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        setEmailMessage('Email changed successfully! Please sign in again with your new email.');
+        setNewEmail('');
+        setConfirmNewEmail('');
+        // Sign out after email change to force re-authentication
+        setTimeout(() => {
+          window.location.href = '/login';
+        }, 2000);
+      } else {
+        setEmailMessage(`Error: ${data.error}`);
+      }
+    } catch (error) {
+      setEmailMessage('Failed to change email');
+    } finally {
+      setChangingEmail(false);
     }
   };
 
@@ -1008,55 +1068,113 @@ export default function AdminDashboardPage() {
 
               {/* Settings Tab */}
               {activeTab === 'settings' && (
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                  {/* Password Change Card */}
-                  <div className="bg-white/95 backdrop-blur-sm rounded-xl shadow-lg hover:shadow-xl transition-shadow p-6 border border-[#D4C4A8]">
-                    <h2 className="text-lg font-semibold text-[#00245D] mb-4">🔐 Change Password</h2>
-                    <p className="text-[#00245D]/60 mb-4">Update your admin account password.</p>
-                    <form onSubmit={handleChangePassword} className="space-y-4">
-                      <div>
-                        <label className="block text-sm font-medium text-[#00245D] mb-1">New Password</label>
-                        <input
-                          type="password"
-                          value={newPassword}
-                          onChange={(e) => setNewPassword(e.target.value)}
-                          className="w-full px-4 py-2 border border-[#D4C4A8] rounded-lg focus:ring-2 focus:ring-[#00245D] focus:border-[#00245D]"
-                          placeholder="Enter new password"
-                          required
-                          minLength={6}
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-[#00245D] mb-1">Confirm New Password</label>
-                        <input
-                          type="password"
-                          value={confirmNewPassword}
-                          onChange={(e) => setConfirmNewPassword(e.target.value)}
-                          className="w-full px-4 py-2 border border-[#D4C4A8] rounded-lg focus:ring-2 focus:ring-[#00245D] focus:border-[#00245D]"
-                          placeholder="Confirm new password"
-                          required
-                          minLength={6}
-                        />
-                      </div>
-                      {settingsMessage && (
-                        <div className={`text-sm p-3 rounded-lg ${settingsMessage.includes('Error') ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600'}`}>
-                          {settingsMessage}
+                <div className="space-y-8">
+                  {/* Account Settings Row */}
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    {/* Email Change Card */}
+                    <div className="bg-white/95 backdrop-blur-sm rounded-xl shadow-lg hover:shadow-xl transition-shadow p-6 border border-[#D4C4A8]">
+                      <h2 className="text-lg font-semibold text-[#00245D] mb-4">📧 Change Email</h2>
+                      <p className="text-[#00245D]/60 mb-4">Update your admin account email address.</p>
+                      <form onSubmit={handleChangeEmail} className="space-y-4">
+                        <div>
+                          <label className="block text-sm font-medium text-[#00245D] mb-1">Current Email</label>
+                          <input
+                            type="email"
+                            value={user?.email || ''}
+                            readOnly
+                            className="w-full px-4 py-2 border border-[#D4C4A8] rounded-lg bg-gray-50 text-[#00245D]/60 cursor-not-allowed"
+                          />
                         </div>
-                      )}
-                      <button
-                        type="submit"
-                        disabled={changingPassword}
-                        className="w-full py-3 bg-[#00245D] text-white rounded-lg font-medium hover:bg-[#00245D]/90 disabled:opacity-50 transition-colors"
-                      >
-                        {changingPassword ? 'Updating...' : 'Update Password'}
-                      </button>
-                    </form>
+                        <div>
+                          <label className="block text-sm font-medium text-[#00245D] mb-1">New Email</label>
+                          <input
+                            type="email"
+                            value={newEmail}
+                            onChange={(e) => setNewEmail(e.target.value)}
+                            className="w-full px-4 py-2 border border-[#D4C4A8] rounded-lg focus:ring-2 focus:ring-[#00245D] focus:border-[#00245D]"
+                            placeholder="Enter new email"
+                            required
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-[#00245D] mb-1">Confirm New Email</label>
+                          <input
+                            type="email"
+                            value={confirmNewEmail}
+                            onChange={(e) => setConfirmNewEmail(e.target.value)}
+                            className="w-full px-4 py-2 border border-[#D4C4A8] rounded-lg focus:ring-2 focus:ring-[#00245D] focus:border-[#00245D]"
+                            placeholder="Confirm new email"
+                            required
+                          />
+                        </div>
+                        {emailMessage && (
+                          <div className={`text-sm p-3 rounded-lg ${emailMessage.includes('Error') ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600'}`}>
+                            {emailMessage}
+                          </div>
+                        )}
+                        <button
+                          type="submit"
+                          disabled={changingEmail}
+                          className="w-full py-3 bg-[#00245D] text-white rounded-lg font-medium hover:bg-[#00245D]/90 disabled:opacity-50 transition-colors"
+                        >
+                          {changingEmail ? 'Updating...' : 'Update Email'}
+                        </button>
+                      </form>
+                    </div>
+
+                    {/* Password Change Card */}
+                    <div className="bg-white/95 backdrop-blur-sm rounded-xl shadow-lg hover:shadow-xl transition-shadow p-6 border border-[#D4C4A8]">
+                      <h2 className="text-lg font-semibold text-[#00245D] mb-4">🔐 Change Password</h2>
+                      <p className="text-[#00245D]/60 mb-4">Update your admin account password.</p>
+                      <form onSubmit={handleChangePassword} className="space-y-4">
+                        <div>
+                          <label className="block text-sm font-medium text-[#00245D] mb-1">New Password</label>
+                          <PasswordInput
+                            id="newPassword"
+                            name="newPassword"
+                            value={newPassword}
+                            onChange={(e) => setNewPassword(e.target.value)}
+                            placeholder="Enter new password"
+                            required
+                            minLength={6}
+                            autoComplete="new-password"
+                            className="w-full px-4 py-2 border border-[#D4C4A8] rounded-lg focus:ring-2 focus:ring-[#00245D] focus:border-[#00245D]"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-[#00245D] mb-1">Confirm New Password</label>
+                          <PasswordInput
+                            id="confirmNewPassword"
+                            name="confirmNewPassword"
+                            value={confirmNewPassword}
+                            onChange={(e) => setConfirmNewPassword(e.target.value)}
+                            placeholder="Confirm new password"
+                            required
+                            minLength={6}
+                            autoComplete="new-password"
+                            className="w-full px-4 py-2 border border-[#D4C4A8] rounded-lg focus:ring-2 focus:ring-[#00245D] focus:border-[#00245D]"
+                          />
+                        </div>
+                        {passwordMessage && (
+                          <div className={`text-sm p-3 rounded-lg ${passwordMessage.includes('Error') ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600'}`}>
+                            {passwordMessage}
+                          </div>
+                        )}
+                        <button
+                          type="submit"
+                          disabled={changingPassword}
+                          className="w-full py-3 bg-[#00245D] text-white rounded-lg font-medium hover:bg-[#00245D]/90 disabled:opacity-50 transition-colors"
+                        >
+                          {changingPassword ? 'Updating...' : 'Update Password'}
+                        </button>
+                      </form>
+                    </div>
                   </div>
 
                   {/* Admin Profile Card */}
                   <div className="bg-white/95 backdrop-blur-sm rounded-xl shadow-lg hover:shadow-xl transition-shadow p-6 border border-[#D4C4A8]">
                     <h2 className="text-lg font-semibold text-[#00245D] mb-4">👤 Admin Profile</h2>
-                    <div className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                       <div className="flex items-center gap-4 p-4 bg-[#D4C4A8]/20 rounded-lg">
                         <div className="w-16 h-16 bg-[#00245D] rounded-2xl flex items-center justify-center text-white text-2xl font-bold shadow-lg">
                           {user?.email?.[0].toUpperCase() || 'A'}
@@ -1078,7 +1196,7 @@ export default function AdminDashboardPage() {
                           <div className="text-xs text-[#00245D]/60">Total Needs</div>
                         </div>
                       </div>
-                      <div className="p-3 bg-[#D4C4A8]/30 rounded-lg">
+                      <div className="p-3 bg-[#D4C4A8]/30 rounded-lg flex items-center">
                         <p className="text-sm text-[#00245D]/80">
                           <span className="font-medium">Platform:</span> Caps Collective - Family Soccer Community
                         </p>

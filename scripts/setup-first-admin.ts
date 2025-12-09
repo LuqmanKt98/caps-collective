@@ -20,7 +20,7 @@ const db = admin.firestore();
 const auth = admin.auth();
 
 async function setupFirstAdmin() {
-    const email = 'luqman.haider01@gmail.com';
+    const email = 'admin@capscollective.com';
     const password = 'Test@123';
 
     try {

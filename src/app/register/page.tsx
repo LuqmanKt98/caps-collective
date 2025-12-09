@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
 import Logo from '@/components/Logo';
+import PasswordInput from '@/components/PasswordInput';
 
 function RegisterPageContent() {
   const searchParams = useSearchParams();
@@ -233,11 +234,25 @@ function RegisterPageContent() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label htmlFor="password" className="block text-sm font-medium text-[#00245D] mb-1.5">Password</label>
-                  <input id="password" name="password" type="password" required value={password} onChange={(e) => setPassword(e.target.value)} className="block w-full px-4 py-3.5 border-2 border-[#D4C4A8] rounded-xl placeholder-[#00245D]/40 focus:outline-none focus:ring-0 focus:border-[#00245D] transition-colors" placeholder="••••••••" />
+                  <PasswordInput
+                    id="password"
+                    name="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    autoComplete="new-password"
+                    required
+                  />
                 </div>
                 <div>
                   <label htmlFor="confirmPassword" className="block text-sm font-medium text-[#00245D] mb-1.5">Confirm</label>
-                  <input id="confirmPassword" name="confirmPassword" type="password" required value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="block w-full px-4 py-3.5 border-2 border-[#D4C4A8] rounded-xl placeholder-[#00245D]/40 focus:outline-none focus:ring-0 focus:border-[#00245D] transition-colors" placeholder="••••••••" />
+                  <PasswordInput
+                    id="confirmPassword"
+                    name="confirmPassword"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    autoComplete="new-password"
+                    required
+                  />
                 </div>
               </div>
 
