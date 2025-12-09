@@ -1,14 +1,15 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import { CONNECTION_SECTORS, ConnectionSector, RelationshipStrength } from '@/types';
-import { collection, addDoc, doc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, addDoc, doc, updateDoc, serverTimestamp, getDocs, query, where, deleteDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 
 interface ConnectionEntry {
+  id?: string;
   sector: ConnectionSector;
   organizationName: string;
   contactName: string;
@@ -27,8 +28,38 @@ export default function ConnectionsOnboardingPage() {
   const [connections, setConnections] = useState<ConnectionEntry[]>([
     { sector: 'Corporate', organizationName: '', contactName: '', relationshipStrength: 'strong_contact' }
   ]);
-  const [loading, setLoading] = useState(false);
+  const [deletedIds, setDeletedIds] = useState<string[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+
+  // Fetch existing connections
+  useEffect(() => {
+    if (user) {
+      const fetchConnections = async () => {
+        try {
+          const q = query(collection(db, 'connections'), where('userId', '==', user.uid));
+          const querySnapshot = await getDocs(q);
+          const fetchedConnections = querySnapshot.docs.map(doc => ({
+            id: doc.id,
+            sector: doc.data().sector as ConnectionSector,
+            organizationName: doc.data().organizationName,
+            contactName: doc.data().contactName || '',
+            relationshipStrength: doc.data().relationshipStrength as RelationshipStrength
+          }));
+
+          if (fetchedConnections.length > 0) {
+            setConnections(fetchedConnections);
+          }
+        } catch (err) {
+          console.error("Error fetching connections:", err);
+        } finally {
+          setLoading(false);
+        }
+      };
+      fetchConnections();
+    }
+  }, [user]);
 
   const addConnectionEntry = () => {
     setConnections([...connections, {
@@ -40,8 +71,16 @@ export default function ConnectionsOnboardingPage() {
   };
 
   const removeConnectionEntry = (index: number) => {
+    const connToRemove = connections[index];
+    if (connToRemove.id) {
+      setDeletedIds([...deletedIds, connToRemove.id]);
+    }
+
     if (connections.length > 1) {
       setConnections(connections.filter((_, i) => i !== index));
+    } else if (connections.length === 1 && connToRemove.id) {
+      // Clear if last one
+      setConnections([{ sector: 'Corporate', organizationName: '', contactName: '', relationshipStrength: 'strong_contact' }]);
     }
   };
 
@@ -61,24 +100,42 @@ export default function ConnectionsOnboardingPage() {
       return;
     }
 
-    setLoading(true);
+    setSubmitting(true);
     setError('');
 
     try {
       const connectionsCollection = collection(db, 'connections');
 
-      for (const conn of validConnections) {
-        await addDoc(connectionsCollection, {
-          userId: user.uid,
-          sector: conn.sector,
-          organizationName: conn.organizationName,
-          contactName: conn.contactName,
-          relationshipStrength: conn.relationshipStrength,
-          createdAt: serverTimestamp()
-        });
+      // 1. Delete removed connections
+      for (const id of deletedIds) {
+        await deleteDoc(doc(db, 'connections', id));
       }
 
-      // Mark onboarding as complete
+      // 2. Add or Update connections
+      for (const conn of validConnections) {
+        if (conn.id) {
+          // Update existing
+          await updateDoc(doc(db, 'connections', conn.id), {
+            sector: conn.sector,
+            organizationName: conn.organizationName,
+            contactName: conn.contactName,
+            relationshipStrength: conn.relationshipStrength,
+            updatedAt: serverTimestamp()
+          });
+        } else {
+          // Add new
+          await addDoc(connectionsCollection, {
+            userId: user.uid,
+            sector: conn.sector,
+            organizationName: conn.organizationName,
+            contactName: conn.contactName,
+            relationshipStrength: conn.relationshipStrength,
+            createdAt: serverTimestamp()
+          });
+        }
+      }
+
+      // Mark onboarding as complete (idempotent)
       await updateDoc(doc(db, 'users', user.uid), {
         onboardingComplete: true,
         updatedAt: serverTimestamp()
@@ -92,7 +149,7 @@ export default function ConnectionsOnboardingPage() {
       console.error('Error saving connections:', err);
       setError('Failed to save connections. Please try again.');
     } finally {
-      setLoading(false);
+      setSubmitting(false);
     }
   };
 
@@ -163,8 +220,8 @@ export default function ConnectionsOnboardingPage() {
 
               <div className="flex justify-between pt-4">
                 <button type="button" onClick={() => router.push('/onboarding/skills')} className="px-6 py-4 border-2 border-[#D4C4A8] text-[#00245D] rounded-xl font-semibold hover:bg-[#D4C4A8]/30 transition-colors">← Back</button>
-                <button type="submit" disabled={loading} className="px-8 py-4 bg-[#00245D] text-white rounded-xl font-semibold shadow-lg shadow-[#00245D]/25 hover:shadow-xl hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:hover:translate-y-0">
-                  {loading ? <span className="flex items-center gap-2"><span className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent"></span>Saving...</span> : 'Complete Setup ✓'}
+                <button type="submit" disabled={submitting} className="px-8 py-4 bg-[#00245D] text-white rounded-xl font-semibold shadow-lg shadow-[#00245D]/25 hover:shadow-xl hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:hover:translate-y-0">
+                  {submitting ? <span className="flex items-center gap-2"><span className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent"></span>Saving...</span> : 'Complete Setup ✓'}
                 </button>
               </div>
             </form>

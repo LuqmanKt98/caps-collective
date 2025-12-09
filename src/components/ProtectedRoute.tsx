@@ -50,10 +50,10 @@ export default function ProtectedRoute({
       }
 
       // If user is on onboarding page but already completed onboarding, redirect to dashboard
-      if (pathname?.startsWith('/onboarding') && userData.onboardingComplete) {
-        router.push('/dashboard');
-        return;
-      }
+      // if (pathname?.startsWith('/onboarding') && userData.onboardingComplete) {
+      //   router.push('/dashboard');
+      //   return;
+      // }
     }
   }, [user, userData, loading, router, requireAdmin, requireOnboarding, pathname]);
 

@@ -1,14 +1,15 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import { SKILL_CATEGORIES, SKILLS_BY_CATEGORY, SkillCategory, WillingnessLevel } from '@/types';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, getDocs, query, where, doc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 
 interface SkillEntry {
+  id?: string;
   category: SkillCategory;
   skillName: string;
   willingnessLevel: WillingnessLevel;
@@ -29,16 +30,54 @@ export default function SkillsOnboardingPage() {
   const [skills, setSkills] = useState<SkillEntry[]>([
     { category: 'Trades', skillName: '', willingnessLevel: 'advice', isHobby: false }
   ]);
-  const [loading, setLoading] = useState(false);
+  const [deletedIds, setDeletedIds] = useState<string[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+
+  // Fetch existing skills
+  useEffect(() => {
+    if (user) {
+      const fetchSkills = async () => {
+        try {
+          const q = query(collection(db, 'skills'), where('userId', '==', user.uid));
+          const querySnapshot = await getDocs(q);
+          const fetchedSkills = querySnapshot.docs.map(doc => ({
+            id: doc.id,
+            category: doc.data().category as SkillCategory,
+            skillName: doc.data().skillName,
+            willingnessLevel: doc.data().willingnessLevel as WillingnessLevel,
+            isHobby: doc.data().isHobby || false
+          }));
+
+          if (fetchedSkills.length > 0) {
+            setSkills(fetchedSkills);
+          }
+        } catch (err) {
+          console.error("Error fetching skills:", err);
+        } finally {
+          setLoading(false);
+        }
+      };
+      fetchSkills();
+    }
+  }, [user]);
 
   const addSkillEntry = () => {
     setSkills([...skills, { category: 'Trades', skillName: '', willingnessLevel: 'advice', isHobby: false }]);
   };
 
   const removeSkillEntry = (index: number) => {
+    const skillToRemove = skills[index];
+    if (skillToRemove.id) {
+      setDeletedIds([...deletedIds, skillToRemove.id]);
+    }
+
     if (skills.length > 1) {
       setSkills(skills.filter((_, i) => i !== index));
+    } else if (skills.length === 1 && skillToRemove.id) {
+      // If it's the last one and has ID, remove it and replace with empty
+      setSkills([{ category: 'Trades', skillName: '', willingnessLevel: 'advice', isHobby: false }]);
     }
   };
 
@@ -61,21 +100,39 @@ export default function SkillsOnboardingPage() {
       return;
     }
 
-    setLoading(true);
+    setSubmitting(true);
     setError('');
 
     try {
       const skillsCollection = collection(db, 'skills');
 
+      // 1. Delete removed skills
+      for (const id of deletedIds) {
+        await deleteDoc(doc(db, 'skills', id));
+      }
+
+      // 2. Add or Update skills
       for (const skill of validSkills) {
-        await addDoc(skillsCollection, {
-          userId: user.uid,
-          category: skill.category,
-          skillName: skill.skillName,
-          willingnessLevel: skill.willingnessLevel,
-          isHobby: skill.isHobby,
-          createdAt: serverTimestamp()
-        });
+        if (skill.id) {
+          // Update existing
+          await updateDoc(doc(db, 'skills', skill.id), {
+            category: skill.category,
+            skillName: skill.skillName,
+            willingnessLevel: skill.willingnessLevel,
+            isHobby: skill.isHobby,
+            updatedAt: serverTimestamp()
+          });
+        } else {
+          // Add new
+          await addDoc(skillsCollection, {
+            userId: user.uid,
+            category: skill.category,
+            skillName: skill.skillName,
+            willingnessLevel: skill.willingnessLevel,
+            isHobby: skill.isHobby,
+            createdAt: serverTimestamp()
+          });
+        }
       }
 
       router.push('/onboarding/connections');
@@ -83,7 +140,7 @@ export default function SkillsOnboardingPage() {
       console.error('Error saving skills:', err);
       setError('Failed to save skills. Please try again.');
     } finally {
-      setLoading(false);
+      setSubmitting(false);
     }
   };
 
@@ -153,9 +210,11 @@ export default function SkillsOnboardingPage() {
               <button type="button" onClick={addSkillEntry} className="w-full py-4 border-2 border-dashed border-[#D4C4A8] rounded-2xl text-[#00245D]/60 hover:border-[#00245D] hover:text-[#00245D] hover:bg-[#99D6EA]/20 transition-all font-medium">+ Add Another Skill</button>
 
               <div className="flex justify-end pt-4">
-                <button type="submit" disabled={loading} className="px-8 py-4 bg-[#00245D] text-white rounded-xl font-semibold shadow-lg shadow-[#00245D]/25 hover:shadow-xl hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:hover:translate-y-0">
-                  {loading ? <span className="flex items-center gap-2"><span className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent"></span>Saving...</span> : 'Continue to Connections →'}
-                </button>
+                <div className="flex justify-end pt-4">
+                  <button type="submit" disabled={submitting} className="px-8 py-4 bg-[#00245D] text-white rounded-xl font-semibold shadow-lg shadow-[#00245D]/25 hover:shadow-xl hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:hover:translate-y-0">
+                    {submitting ? <span className="flex items-center gap-2"><span className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent"></span>Saving...</span> : 'Continue to Connections →'}
+                  </button>
+                </div>
               </div>
             </form>
           </div>
