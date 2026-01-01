@@ -1,11 +1,12 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import Navbar from '@/components/Navbar';
+import Pagination from '@/components/Pagination';
 import Link from 'next/link';
-import { Need, SkillCategory } from '@/types';
+import { Need, SkillCategory, NeedResponse } from '@/types';
 
 interface CategoryStat {
   category: SkillCategory;
@@ -37,8 +38,12 @@ export default function NeedsBoardPage() {
   const { user } = useAuth();
   const [categoryStats, setCategoryStats] = useState<CategoryStat[]>([]);
   const [needs, setNeeds] = useState<Need[]>([]);
+  const [userResponses, setUserResponses] = useState<NeedResponse[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<SkillCategory | null>(null);
   const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 9;
 
   useEffect(() => {
     async function fetchNeeds() {
@@ -55,6 +60,17 @@ export default function NeedsBoardPage() {
           setNeeds(data.data.needs);
           setCategoryStats(data.data.categoryStats);
         }
+
+        // Fetch user's responses
+        const responsesRes = await fetch(`/api/need-responses?userOnly=true`, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+        });
+        const responsesData = await responsesRes.json();
+        if (responsesData.success) {
+          setUserResponses(responsesData.data.responses);
+        }
       } catch (error) {
         console.error('Error fetching needs:', error);
       } finally {
@@ -65,9 +81,39 @@ export default function NeedsBoardPage() {
     fetchNeeds();
   }, [user]);
 
-  const filteredNeeds = selectedCategory
-    ? needs.filter(n => n.category === selectedCategory)
-    : needs;
+  // Memoized filtering for both category and search query
+  const filteredNeeds = useMemo(() => {
+    let result = needs;
+
+    // Filter by category if selected
+    if (selectedCategory) {
+      result = result.filter(n => n.category === selectedCategory);
+    }
+
+    // Filter by search query
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase().trim();
+      result = result.filter(n =>
+        n.title.toLowerCase().includes(query) ||
+        n.description.toLowerCase().includes(query) ||
+        n.category.toLowerCase().includes(query)
+      );
+    }
+
+    return result;
+  }, [needs, selectedCategory, searchQuery]);
+
+  // Pagination logic
+  const totalPages = Math.ceil(filteredNeeds.length / itemsPerPage);
+  const paginatedNeeds = useMemo(() => {
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    return filteredNeeds.slice(startIndex, startIndex + itemsPerPage);
+  }, [filteredNeeds, currentPage, itemsPerPage]);
+
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [selectedCategory, searchQuery]);
 
   const getCategoryColor = (cat: string) => {
     const colors: Record<string, string> = {
@@ -103,6 +149,36 @@ export default function NeedsBoardPage() {
               Needs Board
             </h1>
             <p className="mt-2 text-[#00245D]/60">Browse community needs by category and see where you can help.</p>
+          </div>
+
+          {/* Search Bar */}
+          <div className="mb-6 animate-fadeIn">
+            <div className="bg-white/95 backdrop-blur-sm rounded-2xl shadow-lg hover:shadow-xl transition-shadow p-2 border border-[#D4C4A8]">
+              <div className="relative">
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[#00245D]/40 text-lg">🔍</span>
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search needs by title, description, or category..."
+                  className="w-full pl-12 pr-4 py-3 border-0 rounded-xl focus:ring-2 focus:ring-[#00245D] focus:outline-none text-[#00245D] placeholder-[#00245D]/40 bg-transparent"
+                />
+                {searchQuery && (
+                  <button
+                    onClick={() => setSearchQuery('')}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 text-[#00245D]/40 hover:text-[#00245D] transition-colors"
+                    title="Clear search"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+            </div>
+            {searchQuery && (
+              <p className="mt-2 text-sm text-[#00245D]/60">
+                Showing results for &quot;{searchQuery}&quot; • {filteredNeeds.length} {filteredNeeds.length === 1 ? 'need' : 'needs'} found
+              </p>
+            )}
           </div>
 
           {loading ? (
@@ -141,21 +217,49 @@ export default function NeedsBoardPage() {
                     <p className="text-[#00245D]/60 text-lg">No active needs in this category.</p>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-                    {filteredNeeds.map((need, i) => (
-                      <Link key={need.id} href={`/needs/${need.id}`} className="group bg-white/95 backdrop-blur-sm rounded-2xl p-6 border border-[#D4C4A8] shadow-lg hover:shadow-xl transition-all hover:-translate-y-1 animate-fadeIn" style={{ animationDelay: `${i * 0.05}s` }}>
-                        <div className="flex items-start justify-between mb-4">
-                          <div className={`w-12 h-12 ${getCategoryColor(need.category)} rounded-xl flex items-center justify-center text-xl shadow-lg group-hover:scale-110 transition-transform`}>{CATEGORY_ICONS[need.category] || '📋'}</div>
-                          <span className="text-xs font-medium text-[#00245D]/60 bg-[#D4C4A8]/50 px-3 py-1 rounded-full">{need.category}</span>
-                        </div>
-                        <h3 className="font-bold text-[#00245D] text-lg group-hover:text-[#00245D]/70 transition-colors">{need.title}</h3>
-                        <p className="mt-2 text-sm text-[#00245D]/60 line-clamp-2">{need.description}</p>
-                        <div className="mt-4 flex items-center text-[#00245D] text-sm font-medium">
-                          View matches <svg className="w-4 h-4 ml-1 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
-                        </div>
-                      </Link>
-                    ))}
-                  </div>
+                  <>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                      {paginatedNeeds.map((need, i) => {
+                        const userResponse = userResponses.find(r => r.needId === need.id);
+                        return (
+                          <Link key={need.id} href={`/needs/${need.id}`} className="group bg-white/95 backdrop-blur-sm rounded-2xl p-6 border border-[#D4C4A8] shadow-lg hover:shadow-xl transition-all hover:-translate-y-1 animate-fadeIn relative" style={{ animationDelay: `${i * 0.05}s` }}>
+                            <div className="flex items-start justify-between mb-4">
+                              <div className={`w-12 h-12 ${getCategoryColor(need.category)} rounded-xl flex items-center justify-center text-xl shadow-lg group-hover:scale-110 transition-transform`}>{CATEGORY_ICONS[need.category] || '📋'}</div>
+                              <div className="flex flex-col items-end gap-2">
+                                <span className="text-xs font-medium text-[#00245D]/60 bg-[#D4C4A8]/50 px-3 py-1 rounded-full">{need.category}</span>
+                                {userResponse && (
+                                  <span className={`text-xs font-bold px-2 py-1 rounded-full whitespace-nowrap shadow-sm ${userResponse.status === 'accepted' ? 'bg-green-100 text-green-700 border border-green-200' :
+                                      userResponse.status === 'declined' ? 'bg-red-100 text-red-700 border border-red-200' :
+                                        userResponse.status === 'reviewed' ? 'bg-blue-100 text-blue-700 border border-blue-200' :
+                                          'bg-yellow-100 text-yellow-700 border border-yellow-200'
+                                    }`}>
+                                    {userResponse.status === 'accepted' ? '✓ Accepted' :
+                                      userResponse.status === 'declined' ? '✗ Declined' :
+                                        userResponse.status === 'reviewed' ? '👀 Reviewed' :
+                                          '⏳ Pending'}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            <h3 className="font-bold text-[#00245D] text-lg group-hover:text-[#00245D]/70 transition-colors">{need.title}</h3>
+                            <p className="mt-2 text-sm text-[#00245D]/60 line-clamp-2">{need.description}</p>
+                            <div className="mt-4 flex items-center text-[#00245D] text-sm font-medium">
+                              {userResponse ? 'View response details' : 'View matches'} <svg className="w-4 h-4 ml-1 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                            </div>
+                          </Link>
+                        );
+                      })}
+                    </div>
+
+                    {/* Pagination Controls */}
+                    <Pagination
+                      currentPage={currentPage}
+                      totalItems={filteredNeeds.length}
+                      itemsPerPage={itemsPerPage}
+                      onPageChange={setCurrentPage}
+                      className="mt-8"
+                    />
+                  </>
                 )}
               </div>
             </>

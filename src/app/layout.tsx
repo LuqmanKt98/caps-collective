@@ -17,6 +17,11 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Caps Collective - Community Relationship Mapping",
   description: "Connect skills, relationships, and community needs",
+  icons: {
+    icon: "/whitecaps-logo.webp",
+    shortcut: "/whitecaps-logo.webp",
+    apple: "/whitecaps-logo.webp",
+  },
 };
 
 export default function RootLayout({

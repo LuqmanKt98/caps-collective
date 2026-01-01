@@ -12,6 +12,7 @@ import { Skill, Connection } from '@/types';
 interface UserProfile {
   displayName: string;
   email: string;
+  profilePhoto?: string;
   skills: Skill[];
   connections: Connection[];
 }
@@ -54,6 +55,7 @@ export default function UserProfilePage() {
         setProfile({
           displayName: userData.displayName || 'Community Member',
           email: userData.email || '',
+          profilePhoto: userData.profilePhoto || '',
           skills,
           connections
         });
@@ -119,8 +121,13 @@ export default function UserProfilePage() {
           {/* Profile Header */}
           <div className="bg-white/95 backdrop-blur-sm rounded-2xl p-8 border border-[#D4C4A8] shadow-lg hover:shadow-xl transition-shadow mb-6 animate-fadeIn">
             <div className="flex items-start gap-6">
-              <div className="w-20 h-20 bg-[#00245D] rounded-2xl flex items-center justify-center text-white font-bold text-3xl shadow-lg">
-                {profile.displayName[0]}
+              <div className="w-20 h-20 bg-[#00245D] rounded-2xl flex items-center justify-center text-white font-bold text-3xl shadow-lg overflow-hidden">
+                {profile.profilePhoto ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={profile.profilePhoto} alt={profile.displayName} className="w-full h-full object-cover" />
+                ) : (
+                  profile.displayName[0]
+                )}
               </div>
               <div className="flex-1">
                 <h1 className="text-3xl font-bold text-[#00245D] mb-2">{profile.displayName}</h1>

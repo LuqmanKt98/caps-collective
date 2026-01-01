@@ -74,6 +74,8 @@ export async function GET(request: NextRequest) {
                 createdAt: data.createdAt?.toDate() || new Date(),
                 skillsCount: skillsCounts[doc.id] || 0,
                 connectionsCount: connectionsCounts[doc.id] || 0,
+                invitationId: data.invitationId || null,
+                invitationType: data.invitationType || null,
             } as UserWithStats;
         });
 

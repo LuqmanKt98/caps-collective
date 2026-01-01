@@ -19,11 +19,14 @@ if (!admin.apps.length) {
  */
 export async function sendFirebaseInvitation(email: string) {
     try {
+        // Use Vercel URL in production, or configured base URL, or localhost for dev
+        const baseUrl = process.env.VERCEL_URL
+            ? `https://${process.env.VERCEL_URL}`
+            : process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
+
         const actionCodeSettings = {
             // URL to redirect after sign‑in. Use NEXT_PUBLIC_BASE_URL.
-            url: `${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/register?email=${encodeURIComponent(
-                email
-            )}`,
+            url: `${baseUrl}/register?email=${encodeURIComponent(email)}`,
             handleCodeInApp: true,
         };
 

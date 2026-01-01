@@ -8,6 +8,7 @@ import Link from 'next/link';
 import { collection, getDocs, query, where, doc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { Skill, Connection } from '@/types';
+import ProfilePhotoUpload from '@/components/ProfilePhotoUpload';
 
 export default function ProfilePage() {
   const { user, userData } = useAuth();
@@ -167,14 +168,12 @@ export default function ProfilePage() {
                         placeholder="https://www.linkedin.com/in/username"
                       />
                     </div>
-                    <div>
-                      <label className="block text-sm font-medium text-[#00245D] mb-1.5">Profile Photo URL</label>
-                      <input
-                        type="url"
-                        value={profilePhoto}
-                        onChange={(e) => setProfilePhoto(e.target.value)}
-                        className="w-full px-4 py-3 border-2 border-[#D4C4A8] rounded-xl focus:outline-none focus:border-[#00245D] transition-colors"
-                        placeholder="Paste a link to a headshot or avatar image"
+                    <div className="md:col-span-2">
+                      <ProfilePhotoUpload
+                        currentPhotoUrl={profilePhoto}
+                        onPhotoUploaded={setProfilePhoto}
+                        userId={user?.uid}
+                        disabled={saving}
                       />
                     </div>
                   </div>

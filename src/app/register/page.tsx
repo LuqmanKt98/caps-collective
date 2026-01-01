@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
 import Logo from '@/components/Logo';
 import PasswordInput from '@/components/PasswordInput';
+import ProfilePhotoUpload from '@/components/ProfilePhotoUpload';
 
 function RegisterPageContent() {
   const searchParams = useSearchParams();
@@ -218,18 +219,11 @@ function RegisterPageContent() {
                 </div>
               </div>
 
-              <div>
-                <label htmlFor="profilePhoto" className="block text-sm font-medium text-[#00245D] mb-1.5">Profile Photo URL (Optional)</label>
-                <input
-                  id="profilePhoto"
-                  name="profilePhoto"
-                  type="url"
-                  value={profilePhoto}
-                  onChange={(e) => setProfilePhoto(e.target.value)}
-                  className="block w-full px-4 py-3.5 border-2 border-[#D4C4A8] rounded-xl placeholder-[#00245D]/40 focus:outline-none focus:ring-0 focus:border-[#00245D] transition-colors"
-                  placeholder="Paste a link to a headshot or avatar image"
-                />
-              </div>
+              <ProfilePhotoUpload
+                currentPhotoUrl={profilePhoto}
+                onPhotoUploaded={setProfilePhoto}
+                disabled={loading}
+              />
 
               <div className="grid grid-cols-2 gap-3">
                 <div>

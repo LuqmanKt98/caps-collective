@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import Navbar from '@/components/Navbar';
+import Pagination from '@/components/Pagination';
 import Link from 'next/link';
 import PasswordInput from '@/components/PasswordInput';
 import {
@@ -12,6 +13,7 @@ import {
   Need,
   ScoringConfig,
   InvitationWithDetails,
+  InvitationType,
   UserWithStats,
   AnalyticsSummary
 } from '@/types';
@@ -26,8 +28,14 @@ export default function AdminDashboardPage() {
   const [needs, setNeeds] = useState<Need[]>([]);
   const [newNeed, setNewNeed] = useState({
     title: '',
-    description: '',
     category: 'Technology' as SkillCategory,
+    // Structured fields for formatted description
+    location: '',
+    timeline: '',
+    overview: '',
+    scopeItems: [''],
+    requirements: [''],
+    additionalInfo: '',
   });
   const [submitting, setSubmitting] = useState(false);
   const [submitMessage, setSubmitMessage] = useState('');
@@ -35,9 +43,12 @@ export default function AdminDashboardPage() {
   // Invitations state
   const [invitations, setInvitations] = useState<InvitationWithDetails[]>([]);
   const [newInvitationEmail, setNewInvitationEmail] = useState('');
+  const [publicLinkName, setPublicLinkName] = useState('');
+  const [invitationType, setInvitationType] = useState<InvitationType>('public');
   const [invitationLink, setInvitationLink] = useState('');
   const [invitingUser, setInvitingUser] = useState(false);
   const [invitationEmailStatus, setInvitationEmailStatus] = useState<{ sent: boolean; error?: string } | null>(null);
+  const [copiedLinkId, setCopiedLinkId] = useState<string | null>(null);
 
   // Users state
   const [users, setUsers] = useState<UserWithStats[]>([]);
@@ -45,6 +56,7 @@ export default function AdminDashboardPage() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
   const [showDeleteNeedConfirm, setShowDeleteNeedConfirm] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [togglingAdmin, setTogglingAdmin] = useState<string | null>(null);
 
   // Analytics state
   const [analytics, setAnalytics] = useState<AnalyticsSummary | null>(null);
@@ -76,6 +88,20 @@ export default function AdminDashboardPage() {
   const [showClearInvitationsConfirm, setShowClearInvitationsConfirm] = useState(false);
   const [clearingInvitations, setClearingInvitations] = useState(false);
 
+  // Needs search state
+  const [needsSearchQuery, setNeedsSearchQuery] = useState('');
+
+  // Pending responses count for notification badge
+  const [pendingResponsesCount, setPendingResponsesCount] = useState(0);
+  const [needResponseCounts, setNeedResponseCounts] = useState<Record<string, { total: number; pending: number }>>({});
+
+  // Pagination state
+  const [needsPage, setNeedsPage] = useState(1);
+  const [usersPage, setUsersPage] = useState(1);
+  const [invitationsPage, setInvitationsPage] = useState(1);
+  const itemsPerPage = 10;
+
+
   // Fetch data on mount
   useEffect(() => {
     if (!user) return;
@@ -92,20 +118,22 @@ export default function AdminDashboardPage() {
         'Authorization': `Bearer ${token}`,
       };
 
-      const [needsRes, invitationsRes, usersRes, analyticsRes, configRes] = await Promise.all([
+      const [needsRes, invitationsRes, usersRes, analyticsRes, configRes, responsesRes] = await Promise.all([
         fetch(`/api/needs?active=all`, { headers }),
         fetch(`/api/invitations?userId=${user.uid}`, { headers }),
         fetch(`/api/users?userId=${user.uid}`, { headers }),
         fetch(`/api/analytics?userId=${user.uid}`, { headers }),
         fetch('/api/scoring-config', { headers }),
+        fetch('/api/need-responses', { headers }), // Fetch all responses for admin
       ]);
 
-      const [needsData, invitationsData, usersData, analyticsData, configData] = await Promise.all([
+      const [needsData, invitationsData, usersData, analyticsData, configData, responsesData] = await Promise.all([
         needsRes.json(),
         invitationsRes.json(),
         usersRes.json(),
         analyticsRes.json(),
         configRes.json(),
+        responsesRes.json(),
       ]);
 
       if (needsData.success) setNeeds(needsData.data.needs);
@@ -113,6 +141,27 @@ export default function AdminDashboardPage() {
       if (usersData.success) setUsers(usersData.data.users);
       if (analyticsData.success) setAnalytics(analyticsData.data);
       if (configData.success) setScoringConfig(configData.data);
+
+      // Count pending responses
+      if (responsesData.success) {
+        const pendingCount = responsesData.data.responses.filter(
+          (r: { status: string }) => r.status === 'pending'
+        ).length;
+        setPendingResponsesCount(pendingCount);
+
+        // Group responses by needId
+        const responsesByNeed: Record<string, { total: number; pending: number }> = {};
+        responsesData.data.responses.forEach((response: { needId: string; status: string }) => {
+          if (!responsesByNeed[response.needId]) {
+            responsesByNeed[response.needId] = { total: 0, pending: 0 };
+          }
+          responsesByNeed[response.needId].total++;
+          if (response.status === 'pending') {
+            responsesByNeed[response.needId].pending++;
+          }
+        });
+        setNeedResponseCounts(responsesByNeed);
+      }
     } catch (error) {
       console.error('Error fetching data:', error);
     } finally {
@@ -120,12 +169,47 @@ export default function AdminDashboardPage() {
     }
   };
 
+  // Helper to format structured data into description
+  const formatNeedDescription = () => {
+    const parts: string[] = [];
+
+    // Key details
+    if (newNeed.location) parts.push(`Project Location: ${newNeed.location}`);
+    if (newNeed.timeline) parts.push(`Timeline: ${newNeed.timeline}`);
+
+    // Overview section
+    if (newNeed.overview) {
+      parts.push(`—— Project Overview ${newNeed.overview}`);
+    }
+
+    // Scope section with items
+    const validScopes = newNeed.scopeItems.filter(s => s.trim());
+    if (validScopes.length > 0) {
+      parts.push(`—— Scope of Work ${validScopes.map((item, i) => `${i + 1}. ${item}`).join(' · ')}`);
+    }
+
+    // Requirements section
+    const validReqs = newNeed.requirements.filter(r => r.trim());
+    if (validReqs.length > 0) {
+      parts.push(`—— Requirements ${validReqs.join(' · ')}`);
+    }
+
+    // Additional info
+    if (newNeed.additionalInfo) {
+      parts.push(`—— Additional Information ${newNeed.additionalInfo}`);
+    }
+
+    return parts.join(' ');
+  };
+
   const handleCreateNeed = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user || !newNeed.title || !newNeed.description) return;
+    if (!user || !newNeed.title || !newNeed.overview) return;
 
     setSubmitting(true);
     setSubmitMessage('');
+
+    const formattedDescription = formatNeedDescription();
 
     try {
       const token = await user.getIdToken();
@@ -136,7 +220,9 @@ export default function AdminDashboardPage() {
           'Authorization': `Bearer ${token}`,
         },
         body: JSON.stringify({
-          ...newNeed,
+          title: newNeed.title,
+          description: formattedDescription,
+          category: newNeed.category,
           userId: user.uid,
         }),
       });
@@ -145,7 +231,16 @@ export default function AdminDashboardPage() {
 
       if (data.success) {
         setSubmitMessage('Need created successfully!');
-        setNewNeed({ title: '', description: '', category: 'Technology' });
+        setNewNeed({
+          title: '',
+          category: 'Technology',
+          location: '',
+          timeline: '',
+          overview: '',
+          scopeItems: [''],
+          requirements: [''],
+          additionalInfo: '',
+        });
         await fetchAllData();
       } else {
         setSubmitMessage(`Error: ${data.error}`);
@@ -210,9 +305,15 @@ export default function AdminDashboardPage() {
     }
   };
 
-  const handleSendInvitation = async (e: React.FormEvent) => {
+  const handleCreateInvitation = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user || !newInvitationEmail) return;
+    if (!user) return;
+
+    // For personal invitations, require email
+    if (invitationType === 'personal' && !newInvitationEmail) {
+      alert('Please enter an email address for personal invitations');
+      return;
+    }
 
     setInvitingUser(true);
     setInvitationLink('');
@@ -227,8 +328,8 @@ export default function AdminDashboardPage() {
           'Authorization': `Bearer ${token}`,
         },
         body: JSON.stringify({
-          email: newInvitationEmail,
-          userId: user.uid,
+          type: invitationType,
+          ...(invitationType === 'personal' ? { email: newInvitationEmail } : { name: publicLinkName || 'Public Invitation Link' }),
         }),
       });
 
@@ -236,28 +337,44 @@ export default function AdminDashboardPage() {
 
       if (data.success) {
         setInvitationLink(data.data.invitationLink);
-        setInvitationEmailStatus({
-          sent: data.data.emailSent,
-          error: data.data.emailError,
-        });
+        if (invitationType === 'personal') {
+          setInvitationEmailStatus({
+            sent: data.data.emailSent,
+            error: data.data.emailError,
+          });
+        }
         setNewInvitationEmail('');
+        setPublicLinkName('');
         await fetchAllData();
       } else {
         alert(`Error: ${data.error}`);
       }
     } catch (error) {
-      alert('Failed to send invitation');
+      alert('Failed to create invitation');
     } finally {
       setInvitingUser(false);
     }
   };
 
+  const copyToClipboard = async (text: string, id?: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      if (id) {
+        setCopiedLinkId(id);
+        setTimeout(() => setCopiedLinkId(null), 2000);
+      }
+    } catch (err) {
+      console.error('Failed to copy:', err);
+    }
+  };
+
   const toggleUserAdmin = async (targetUserId: string, currentStatus: boolean) => {
     if (!user) return;
+    setTogglingAdmin(targetUserId);
 
     try {
       const token = await user.getIdToken();
-      await fetch('/api/users', {
+      const response = await fetch('/api/users', {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -265,16 +382,24 @@ export default function AdminDashboardPage() {
         },
         body: JSON.stringify({
           targetUserId,
-          requestingUserId: user.uid,
           updates: { isAdmin: !currentStatus },
         }),
       });
 
-      setUsers(users.map(u =>
-        u.id === targetUserId ? { ...u, isAdmin: !currentStatus } : u
-      ));
+      const data = await response.json();
+
+      if (data.success) {
+        setUsers(users.map(u =>
+          u.id === targetUserId ? { ...u, isAdmin: !currentStatus } : u
+        ));
+      } else {
+        alert(`Error: ${data.error}`);
+      }
     } catch (error) {
       console.error('Error toggling admin status:', error);
+      alert('Failed to update admin status');
+    } finally {
+      setTogglingAdmin(null);
     }
   };
 
@@ -363,6 +488,34 @@ export default function AdminDashboardPage() {
     }
 
     return filtered;
+  };
+
+  const getPaginatedUsers = () => {
+    const filtered = getFilteredUsers();
+    const startIndex = (usersPage - 1) * itemsPerPage;
+    return filtered.slice(startIndex, startIndex + itemsPerPage);
+  };
+
+  const getFilteredNeeds = () => {
+    if (!needsSearchQuery.trim()) return needs;
+
+    const query = needsSearchQuery.toLowerCase().trim();
+    return needs.filter(need =>
+      need.title.toLowerCase().includes(query) ||
+      need.description.toLowerCase().includes(query) ||
+      need.category.toLowerCase().includes(query)
+    );
+  };
+
+  const getPaginatedNeeds = () => {
+    const filtered = getFilteredNeeds();
+    const startIndex = (needsPage - 1) * itemsPerPage;
+    return filtered.slice(startIndex, startIndex + itemsPerPage);
+  };
+
+  const getPaginatedInvitations = () => {
+    const startIndex = (invitationsPage - 1) * itemsPerPage;
+    return invitations.slice(startIndex, startIndex + itemsPerPage);
   };
 
   const handleChangePassword = async (e: React.FormEvent) => {
@@ -607,18 +760,24 @@ export default function AdminDashboardPage() {
           </div>
 
           {/* Tabs */}
-          <div className="flex gap-2 mb-6 overflow-x-auto pb-2">
+          <div className="flex gap-2 mb-6 pb-2">
             <button onClick={() => setActiveTab('analytics')} className={`px-4 py-2 rounded-lg font-medium transition-all whitespace-nowrap ${activeTab === 'analytics' ? 'bg-[#00245D] text-white shadow-xl' : 'bg-white/95 backdrop-blur-sm text-[#00245D] hover:bg-[#99D6EA]/30 shadow-lg hover:shadow-xl'}`}>
               📊 Analytics
             </button>
             <button onClick={() => setActiveTab('invitations')} className={`px-4 py-2 rounded-lg font-medium transition-all whitespace-nowrap ${activeTab === 'invitations' ? 'bg-[#00245D] text-white shadow-xl' : 'bg-white/95 backdrop-blur-sm text-[#00245D] hover:bg-[#99D6EA]/30 shadow-lg hover:shadow-xl'}`}>
               📧 Invitations
             </button>
-            <button onClick={() => setActiveTab('users')} className={`px-4 py-2 rounded-lg font-medium transition-all whitespace-nowrap ${activeTab === 'users' ? 'bg-[#00245D] text-white shadow-xl' : 'bg-white/95 backdrop-blur-sm text-[#00245D] hover:bg-[#99D6EA]/30 shadow-lg hover:shadow-xl'}`}>
+            <button onClick={() => setActiveTab('users')} className={`px-4 py-2 rounded-lg font-medium transition-all whitespace-nowrap relative ${activeTab === 'users' ? 'bg-[#00245D] text-white shadow-xl' : 'bg-white/95 backdrop-blur-sm text-[#00245D] hover:bg-[#99D6EA]/30 shadow-lg hover:shadow-xl'}`}>
               👥 Users
+
             </button>
-            <button onClick={() => setActiveTab('needs')} className={`px-4 py-2 rounded-lg font-medium transition-all whitespace-nowrap ${activeTab === 'needs' ? 'bg-[#00245D] text-white shadow-xl' : 'bg-white/95 backdrop-blur-sm text-[#00245D] hover:bg-[#99D6EA]/30 shadow-lg hover:shadow-xl'}`}>
+            <button onClick={() => setActiveTab('needs')} className={`px-4 py-2 rounded-lg font-medium transition-all whitespace-nowrap relative ${activeTab === 'needs' ? 'bg-[#00245D] text-white shadow-xl' : 'bg-white/95 backdrop-blur-sm text-[#00245D] hover:bg-[#99D6EA]/30 shadow-lg hover:shadow-xl'}`}>
               📋 Needs
+              {pendingResponsesCount > 0 && (
+                <span className="absolute top-0 right-0 transform translate-x-1/2 -translate-y-1/2 bg-red-500 text-white text-xs font-bold rounded-full min-w-[20px] h-5 px-1.5 flex items-center justify-center animate-pulse shadow-lg border-2 border-white">
+                  {pendingResponsesCount}
+                </span>
+              )}
             </button>
             <button onClick={() => setActiveTab('scoring')} className={`px-4 py-2 rounded-lg font-medium transition-all whitespace-nowrap ${activeTab === 'scoring' ? 'bg-[#00245D] text-white shadow-xl' : 'bg-white/95 backdrop-blur-sm text-[#00245D] hover:bg-[#99D6EA]/30 shadow-lg hover:shadow-xl'}`}>
               🤖 AI Scoring
@@ -715,116 +874,249 @@ export default function AdminDashboardPage() {
 
               {/* Invitations Tab */}
               {activeTab === 'invitations' && (
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {/* Create Invitation Card */}
                   <div className="bg-white/95 backdrop-blur-sm rounded-xl shadow-lg hover:shadow-xl transition-shadow p-6 border border-[#D4C4A8]">
-                    <h2 className="text-lg font-semibold text-[#00245D] mb-4">Send New Invitation</h2>
-                    <form onSubmit={handleSendInvitation} className="space-y-4">
-                      <div>
-                        <label className="block text-sm font-medium text-[#00245D] mb-1">Email Address</label>
-                        <input
-                          type="email"
-                          value={newInvitationEmail}
-                          onChange={(e) => setNewInvitationEmail(e.target.value)}
-                          className="w-full px-4 py-2 border border-[#D4C4A8] rounded-lg focus:ring-2 focus:ring-[#00245D] focus:border-[#00245D]"
-                          placeholder="user@example.com"
-                          required
-                        />
-                      </div>
+                    <h3 className="text-lg font-semibold text-[#00245D] mb-4 flex items-center gap-2">
+                      <span className="w-8 h-8 bg-[#00245D]/10 rounded-lg flex items-center justify-center text-sm">✨</span>
+                      Create New Invitation
+                    </h3>
+
+                    {/* Type Selector */}
+                    <div className="flex gap-2 mb-6">
+                      <button
+                        onClick={() => setInvitationType('public')}
+                        className={`flex-1 py-3 px-4 rounded-xl font-medium transition-all ${invitationType === 'public'
+                          ? 'bg-[#00245D] text-white shadow-lg'
+                          : 'bg-[#D4C4A8]/20 text-[#00245D] hover:bg-[#D4C4A8]/30'
+                          }`}
+                      >
+                        <div className="text-lg mb-1">🌐</div>
+                        <div className="text-sm font-semibold">Public Link</div>
+                        <div className="text-xs opacity-70 mt-1">Share with many</div>
+                      </button>
+                      <button
+                        onClick={() => setInvitationType('personal')}
+                        className={`flex-1 py-3 px-4 rounded-xl font-medium transition-all ${invitationType === 'personal'
+                          ? 'bg-[#00245D] text-white shadow-lg'
+                          : 'bg-[#D4C4A8]/20 text-[#00245D] hover:bg-[#D4C4A8]/30'
+                          }`}
+                      >
+                        <div className="text-lg mb-1">📧</div>
+                        <div className="text-sm font-semibold">Personal</div>
+                        <div className="text-xs opacity-70 mt-1">Email invite</div>
+                      </button>
+                    </div>
+
+                    <form onSubmit={handleCreateInvitation} className="space-y-4">
+                      {invitationType === 'public' ? (
+                        <div>
+                          <label className="block text-sm font-medium text-[#00245D] mb-2">Link Name (Optional)</label>
+                          <input
+                            type="text"
+                            value={publicLinkName}
+                            onChange={(e) => setPublicLinkName(e.target.value)}
+                            className="w-full px-4 py-3 border-2 border-[#D4C4A8] rounded-xl focus:ring-2 focus:ring-[#00245D] focus:border-[#00245D] transition-all"
+                            placeholder="e.g., Community Open Day, Social Media Campaign"
+                          />
+                          <p className="text-xs text-[#00245D]/60 mt-2 flex items-center gap-1">
+                            <span>✓</span> Never expires • Unlimited uses
+                          </p>
+                        </div>
+                      ) : (
+                        <div>
+                          <label className="block text-sm font-medium text-[#00245D] mb-2">Email Address</label>
+                          <input
+                            type="email"
+                            value={newInvitationEmail}
+                            onChange={(e) => setNewInvitationEmail(e.target.value)}
+                            className="w-full px-4 py-3 border-2 border-[#D4C4A8] rounded-xl focus:ring-2 focus:ring-[#00245D] focus:border-[#00245D] transition-all"
+                            placeholder="user@example.com"
+                            required
+                          />
+                          <p className="text-xs text-[#00245D]/60 mt-2 flex items-center gap-1">
+                            <span>📧</span> Email sent automatically • Never expires
+                          </p>
+                        </div>
+                      )}
+
                       <button
                         type="submit"
                         disabled={invitingUser}
-                        className="w-full py-3 bg-[#00245D] text-white rounded-lg font-medium hover:bg-[#00245D]/90 disabled:opacity-50 transition-colors"
+                        className="w-full py-4 bg-gradient-to-r from-[#00245D] to-[#00245D]/90 text-white rounded-xl font-semibold shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:hover:translate-y-0 flex items-center justify-center gap-2"
                       >
-                        {invitingUser ? 'Sending...' : 'Generate Invitation Link'}
+                        {invitingUser ? (
+                          <>
+                            <span className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent" />
+                            Creating...
+                          </>
+                        ) : (
+                          <>
+                            <span>{invitationType === 'public' ? '🔗' : '📧'}</span>
+                            {invitationType === 'public' ? 'Generate Public Link' : 'Send Invitation Email'}
+                          </>
+                        )}
                       </button>
                     </form>
-                    {invitationLink && (
-                      <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg">
-                        <p className="text-sm font-medium text-green-800 mb-2">Invitation created successfully!</p>
 
-                        {/* Email Status */}
-                        {invitationEmailStatus && (
-                          <div className={`text-xs p-2 rounded mb-2 ${invitationEmailStatus.sent
+                    {/* Success Message */}
+                    {invitationLink && (
+                      <div className="mt-6 p-4 bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-xl animate-fadeIn">
+                        <div className="flex items-center gap-2 mb-3">
+                          <div className="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center">
+                            <span className="text-white text-sm">✓</span>
+                          </div>
+                          <div>
+                            <p className="font-semibold text-green-800">Link Created Successfully!</p>
+                            {invitationType === 'public' && (
+                              <p className="text-xs text-green-600">This link never expires and can be used unlimited times.</p>
+                            )}
+                          </div>
+                        </div>
+
+                        {invitationEmailStatus && invitationType === 'personal' && (
+                          <div className={`text-sm p-3 rounded-lg mb-3 ${invitationEmailStatus.sent
                             ? 'bg-green-100 text-green-700'
-                            : 'bg-yellow-100 text-yellow-700'}`}>
+                            : 'bg-amber-100 text-amber-700'
+                            }`}>
                             {invitationEmailStatus.sent
                               ? '✅ Email invitation sent successfully!'
-                              : `⚠️ Email could not be sent. ${invitationEmailStatus.error || 'Please share the link manually.'}`}
+                              : `⚠️ Email failed: ${invitationEmailStatus.error || 'Share the link manually below.'}`}
                           </div>
                         )}
 
-                        <p className="text-xs text-green-700 mb-2">Copy this link and send it to the invitee:</p>
                         <div className="flex gap-2">
                           <input
                             type="text"
                             value={invitationLink}
                             readOnly
-                            className="flex-1 px-3 py-2 bg-white border border-green-300 rounded text-sm"
+                            className="flex-1 px-4 py-3 bg-white border border-green-300 rounded-xl text-sm font-mono"
                           />
                           <button
                             onClick={() => {
-                              navigator.clipboard.writeText(invitationLink);
+                              copyToClipboard(invitationLink);
                               alert('Link copied to clipboard!');
                             }}
-                            className="px-4 py-2 bg-green-600 text-white rounded font-medium hover:bg-green-700 transition-colors"
+                            className="px-6 py-3 bg-green-600 text-white rounded-xl font-semibold hover:bg-green-700 transition-colors flex items-center gap-2"
                           >
-                            Copy
+                            📋 Copy
                           </button>
                         </div>
                       </div>
                     )}
                   </div>
 
+                  {/* Active Links Card */}
                   <div className="bg-white/95 backdrop-blur-sm rounded-xl shadow-lg hover:shadow-xl transition-shadow p-6 border border-[#D4C4A8]">
                     <div className="flex justify-between items-center mb-4">
-                      <h2 className="text-lg font-semibold text-[#00245D]">Invitation History</h2>
+                      <h3 className="text-lg font-semibold text-[#00245D] flex items-center gap-2">
+                        <span className="w-8 h-8 bg-[#00245D]/10 rounded-lg flex items-center justify-center text-sm">📋</span>
+                        Active Invitation Links
+                      </h3>
                       {invitations.length > 0 && (
                         <button
                           onClick={() => setShowClearInvitationsConfirm(true)}
-                          className="px-3 py-1 text-sm bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors"
+                          className="px-3 py-1.5 text-xs bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-colors font-medium"
                         >
                           Clear All
                         </button>
                       )}
                     </div>
-                    <div className="space-y-3 max-h-96 overflow-y-auto">
+
+                    <div className="space-y-3">
                       {invitations.length === 0 ? (
-                        <p className="text-[#00245D]/60 text-center py-8">No invitations sent yet</p>
-                      ) : (
-                        invitations.map(inv => (
-                          <div key={inv.id} className="p-3 bg-[#D4C4A8]/20 rounded-lg">
-                            <div className="flex justify-between items-start">
-                              <div className="flex-1">
-                                <p className="font-medium text-[#00245D]">{inv.email}</p>
-                                <p className="text-xs text-[#00245D]/60 mt-1">
-                                  Invited by {inv.inviterName || inv.inviterEmail} on {new Date(inv.createdAt).toLocaleDateString()}
-                                </p>
-                              </div>
-                              <span className={`ml-2 px-2 py-1 rounded-full text-xs font-medium ${inv.status === 'accepted' ? 'bg-green-100 text-green-800' :
-                                inv.status === 'expired' ? 'bg-red-100 text-red-800' :
-                                  'bg-yellow-100 text-yellow-800'
-                                }`}>
-                                {inv.status}
-                              </span>
-                            </div>
-                            <div className="flex gap-2 mt-2">
-                              {inv.status === 'pending' && (
-                                <button
-                                  onClick={() => handleResendInvitation(inv.id, inv.email)}
-                                  className="px-2 py-1 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200 transition-colors"
-                                >
-                                  Resend
-                                </button>
-                              )}
-                              <button
-                                onClick={() => handleDeleteInvitation(inv.id)}
-                                className="px-2 py-1 text-xs bg-red-100 text-red-700 rounded hover:bg-red-200 transition-colors"
-                              >
-                                Delete
-                              </button>
-                            </div>
+                        <div className="text-center py-12">
+                          <div className="w-16 h-16 bg-[#D4C4A8]/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <span className="text-3xl opacity-50">🔗</span>
                           </div>
-                        ))
+                          <p className="text-[#00245D]/60 font-medium">No invitation links yet</p>
+                          <p className="text-[#00245D]/40 text-sm mt-1">Create your first link to start inviting members</p>
+                        </div>
+                      ) : (
+                        <>
+                          {getPaginatedInvitations().map(inv => (
+                            <div
+                              key={inv.id}
+                              className={`p-4 rounded-xl border transition-all hover:shadow-md ${inv.type === 'public'
+                                ? 'bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200'
+                                : 'bg-gradient-to-r from-amber-50 to-orange-50 border-amber-200'
+                                }`}
+                            >
+                              <div className="flex justify-between items-start gap-3">
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2 mb-1">
+                                    <span className="text-lg">{inv.type === 'public' ? '🌐' : '📧'}</span>
+                                    <span className="font-semibold text-[#00245D] truncate">
+                                      {inv.type === 'public' ? (inv.name || 'Public Link') : inv.email}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-3 text-xs text-[#00245D]/60">
+                                    <span>Created {new Date(inv.createdAt).toLocaleDateString()}</span>
+                                    {inv.type === 'public' && (
+                                      <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">
+                                        {inv.usageCount || 0} sign-ups
+                                      </span>
+                                    )}
+
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${inv.status === 'accepted'
+                                    ? 'bg-green-100 text-green-700'
+                                    : inv.status === 'expired'
+                                      ? 'bg-red-100 text-red-700'
+                                      : inv.type === 'public'
+                                        ? 'bg-blue-100 text-blue-700'
+                                        : 'bg-amber-100 text-amber-700'
+                                    }`}>
+                                    {inv.type === 'public' ? '∞ Active' : inv.status}
+                                  </span>
+                                </div>
+                              </div>
+
+
+
+                              <div className="flex gap-2 mt-3 pt-3 border-t border-[#00245D]/10">
+                                {inv.invitationLink && (
+                                  <button
+                                    onClick={() => copyToClipboard(inv.invitationLink!, inv.id)}
+                                    className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-2 ${copiedLinkId === inv.id
+                                      ? 'bg-green-500 text-white'
+                                      : 'bg-[#00245D]/10 text-[#00245D] hover:bg-[#00245D]/20'
+                                      }`}
+                                  >
+                                    {copiedLinkId === inv.id ? (
+                                      <>✓ Copied!</>
+                                    ) : (
+                                      <>📋 Copy Link</>
+                                    )}
+                                  </button>
+                                )}
+                                {inv.type === 'personal' && inv.status === 'pending' && (
+                                  <button
+                                    onClick={() => handleResendInvitation(inv.id, inv.email || '')}
+                                    className="px-3 py-2 bg-blue-100 text-blue-700 rounded-lg text-sm font-medium hover:bg-blue-200 transition-colors"
+                                  >
+                                    Resend Email
+                                  </button>
+                                )}
+                                <button
+                                  onClick={() => handleDeleteInvitation(inv.id)}
+                                  className="px-3 py-2 bg-red-100 text-red-600 rounded-lg text-sm font-medium hover:bg-red-200 transition-colors"
+                                >
+                                  🗑️
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                          <Pagination
+                            currentPage={invitationsPage}
+                            totalItems={invitations.length}
+                            itemsPerPage={itemsPerPage}
+                            onPageChange={setInvitationsPage}
+                            className="mt-4"
+                          />
+                        </>
                       )}
                     </div>
                   </div>
@@ -853,8 +1145,6 @@ export default function AdminDashboardPage() {
                   {/* Filter Buttons */}
                   <div className="flex gap-2 mb-4">
                     <button onClick={() => setUserFilter('all')} className={`px-3 py-1 rounded text-sm ${userFilter === 'all' ? 'bg-[#00245D] text-white' : 'bg-[#D4C4A8]/30 text-[#00245D]'}`}>All ({users.length})</button>
-                    <button onClick={() => setUserFilter('onboarded')} className={`px-3 py-1 rounded text-sm ${userFilter === 'onboarded' ? 'bg-[#00245D] text-white' : 'bg-[#D4C4A8]/30 text-[#00245D]'}`}>Onboarded</button>
-                    <button onClick={() => setUserFilter('pending')} className={`px-3 py-1 rounded text-sm ${userFilter === 'pending' ? 'bg-[#00245D] text-white' : 'bg-[#D4C4A8]/30 text-[#00245D]'}`}>Pending</button>
                     <button onClick={() => setUserFilter('admins')} className={`px-3 py-1 rounded text-sm ${userFilter === 'admins' ? 'bg-[#00245D] text-white' : 'bg-[#D4C4A8]/30 text-[#00245D]'}`}>Admins</button>
                   </div>
 
@@ -864,41 +1154,72 @@ export default function AdminDashboardPage() {
                         <tr className="border-b border-[#D4C4A8]">
                           <th className="text-left py-3 px-4 text-sm font-medium text-[#00245D]">Email</th>
                           <th className="text-left py-3 px-4 text-sm font-medium text-[#00245D]">Name</th>
+                          <th className="text-left py-3 px-4 text-sm font-medium text-[#00245D]">Join Method</th>
                           <th className="text-center py-3 px-4 text-sm font-medium text-[#00245D]">Skills</th>
                           <th className="text-center py-3 px-4 text-sm font-medium text-[#00245D]">Connections</th>
-                          <th className="text-center py-3 px-4 text-sm font-medium text-[#00245D]">Status</th>
+
                           <th className="text-center py-3 px-4 text-sm font-medium text-[#00245D]">Admin</th>
                           <th className="text-center py-3 px-4 text-sm font-medium text-[#00245D]">Actions</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {getFilteredUsers().length === 0 ? (
+                        {getPaginatedUsers().length === 0 ? (
                           <tr>
-                            <td colSpan={7} className="py-8 text-center text-[#00245D]/60">
+                            <td colSpan={8} className="py-8 text-center text-[#00245D]/60">
                               No users found
                             </td>
                           </tr>
                         ) : (
-                          getFilteredUsers().map(u => (
+                          getPaginatedUsers().map(u => (
                             <tr key={u.id} className="border-b border-[#D4C4A8]/30 hover:bg-[#D4C4A8]/10">
                               <td className="py-3 px-4 text-sm text-[#00245D]">{u.email}</td>
                               <td className="py-3 px-4 text-sm text-[#00245D]">{u.displayName || '-'}</td>
+                              <td className="py-3 px-4">
+                                {u.invitationId ? (
+                                  (() => {
+                                    const invite = invitations.find(i => i.id === u.invitationId);
+                                    const displayText = invite
+                                      ? (invite.type === 'public' ? `🌐 ${invite.name || 'Public Link'}` : '📧 Personal Invite')
+                                      : (u.invitationType === 'public' ? '🌐 Public Link' : '📧 Personal Invite');
+
+                                    return (
+                                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-[#00245D]/5 text-[#00245D] border border-[#00245D]/10">
+                                        {displayText}
+                                      </span>
+                                    );
+                                  })()
+                                ) : (
+                                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
+                                    👤 Direct Sign-up
+                                  </span>
+                                )}
+                              </td>
                               <td className="py-3 px-4 text-sm text-center text-[#00245D]">{u.skillsCount}</td>
                               <td className="py-3 px-4 text-sm text-center text-[#00245D]">{u.connectionsCount}</td>
+
                               <td className="py-3 px-4 text-center">
-                                <span className={`px-2 py-1 rounded-full text-xs font-medium ${u.onboardingComplete ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
-                                  {u.onboardingComplete ? 'Complete' : 'Pending'}
-                                </span>
-                              </td>
-                              <td className="py-3 px-4 text-center">
-                                {u.isAdmin ? (
-                                  <span className="px-3 py-1 rounded text-xs font-medium bg-[#00245D] text-white">
-                                    👑 Admin
+                                {u.isPrimaryAdmin ? (
+                                  <span className="px-3 py-1 rounded text-xs font-medium bg-[#00245D] text-white cursor-not-allowed" title="Primary admin cannot be changed">
+                                    👑 Primary
                                   </span>
+                                ) : u.isAdmin ? (
+                                  <button
+                                    onClick={() => toggleUserAdmin(u.id, u.isAdmin)}
+                                    disabled={togglingAdmin === u.id || u.id === user?.uid}
+                                    className="px-3 py-1 rounded text-xs font-medium bg-[#00245D] text-white hover:bg-[#00245D]/80 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                    title={u.id === user?.uid ? "Cannot change your own admin status" : "Click to remove admin"}
+                                  >
+                                    {togglingAdmin === u.id ? '...' : '👑 Admin'}
+                                  </button>
                                 ) : (
-                                  <span className="px-3 py-1 rounded text-xs font-medium bg-gray-100 text-gray-600">
-                                    Member
-                                  </span>
+                                  <button
+                                    onClick={() => toggleUserAdmin(u.id, u.isAdmin)}
+                                    disabled={togglingAdmin === u.id}
+                                    className="px-3 py-1 rounded text-xs font-medium bg-gray-100 text-gray-600 hover:bg-[#99D6EA] hover:text-[#00245D] transition-colors disabled:opacity-50"
+                                    title="Click to make admin"
+                                  >
+                                    {togglingAdmin === u.id ? '...' : 'Make Admin'}
+                                  </button>
                                 )}
                               </td>
                               <td className="py-3 px-4 text-center">
@@ -916,6 +1237,13 @@ export default function AdminDashboardPage() {
                       </tbody>
                     </table>
                   </div>
+                  <Pagination
+                    currentPage={usersPage}
+                    totalItems={getFilteredUsers().length}
+                    itemsPerPage={itemsPerPage}
+                    onPageChange={setUsersPage}
+                    className="mt-4"
+                  />
                 </div>
               )}
 
@@ -924,109 +1252,343 @@ export default function AdminDashboardPage() {
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                   <div className="bg-white/95 backdrop-blur-sm rounded-xl shadow-lg hover:shadow-xl transition-shadow p-6 border border-[#D4C4A8]">
                     <h2 className="text-lg font-semibold text-[#00245D] mb-4">
-                      {editingNeed ? 'Edit Need' : 'Create New Need'}
+                      {editingNeed ? 'Edit Need' : '✨ Create New Need'}
                     </h2>
-                    <form onSubmit={editingNeed ? handleUpdateNeed : handleCreateNeed} className="space-y-4">
-                      <div>
-                        <label className="block text-sm font-medium text-[#00245D] mb-1">Title</label>
-                        <input
-                          type="text"
-                          value={editingNeed ? editNeedData.title : newNeed.title}
-                          onChange={(e) => editingNeed
-                            ? setEditNeedData({ ...editNeedData, title: e.target.value })
-                            : setNewNeed({ ...newNeed, title: e.target.value })
-                          }
-                          className="w-full px-4 py-2 border border-[#D4C4A8] rounded-lg focus:ring-2 focus:ring-[#00245D] focus:border-[#00245D]"
-                          placeholder="What does the community need?"
-                          required
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-[#00245D] mb-1">Category</label>
-                        <select
-                          value={editingNeed ? editNeedData.category : newNeed.category}
-                          onChange={(e) => editingNeed
-                            ? setEditNeedData({ ...editNeedData, category: e.target.value as SkillCategory })
-                            : setNewNeed({ ...newNeed, category: e.target.value as SkillCategory })
-                          }
-                          className="w-full px-4 py-2 border border-[#D4C4A8] rounded-lg focus:ring-2 focus:ring-[#00245D] focus:border-[#00245D]"
-                        >
-                          {SKILL_CATEGORIES.map(cat => (<option key={cat} value={cat}>{cat}</option>))}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-[#00245D] mb-1">Description</label>
-                        <textarea
-                          value={editingNeed ? editNeedData.description : newNeed.description}
-                          onChange={(e) => editingNeed
-                            ? setEditNeedData({ ...editNeedData, description: e.target.value })
-                            : setNewNeed({ ...newNeed, description: e.target.value })
-                          }
-                          className="w-full px-4 py-2 border border-[#D4C4A8] rounded-lg focus:ring-2 focus:ring-[#00245D] focus:border-[#00245D]"
-                          rows={4}
-                          placeholder="Describe the need in detail..."
-                          required
-                        />
-                      </div>
-                      {submitMessage && <div className={`text-sm p-3 rounded-lg ${submitMessage.includes('Error') ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600'}`}>{submitMessage}</div>}
-                      <div className="flex gap-2">
-                        <button type="submit" disabled={submitting} className="flex-1 py-3 bg-[#00245D] text-white rounded-lg font-medium hover:bg-[#00245D]/90 disabled:opacity-50 transition-colors">
-                          {submitting ? 'Saving...' : (editingNeed ? 'Update Need' : 'Create Need')}
-                        </button>
-                        {editingNeed && (
-                          <button
-                            type="button"
-                            onClick={() => { setEditingNeed(null); setSubmitMessage(''); }}
-                            className="px-4 py-3 bg-gray-200 text-gray-700 rounded-lg font-medium hover:bg-gray-300 transition-colors"
+
+                    {editingNeed ? (
+                      /* Simple form for editing existing needs */
+                      <form onSubmit={handleUpdateNeed} className="space-y-4">
+                        <div>
+                          <label className="block text-sm font-medium text-[#00245D] mb-1">Title</label>
+                          <input
+                            type="text"
+                            value={editNeedData.title}
+                            onChange={(e) => setEditNeedData({ ...editNeedData, title: e.target.value })}
+                            className="w-full px-4 py-2 border border-[#D4C4A8] rounded-lg focus:ring-2 focus:ring-[#00245D] focus:border-[#00245D]"
+                            required
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-[#00245D] mb-1">Category</label>
+                          <select
+                            value={editNeedData.category}
+                            onChange={(e) => setEditNeedData({ ...editNeedData, category: e.target.value as SkillCategory })}
+                            className="w-full px-4 py-2 border border-[#D4C4A8] rounded-lg focus:ring-2 focus:ring-[#00245D] focus:border-[#00245D]"
                           >
+                            {SKILL_CATEGORIES.map(cat => (<option key={cat} value={cat}>{cat}</option>))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-[#00245D] mb-1">Description</label>
+                          <textarea
+                            value={editNeedData.description}
+                            onChange={(e) => setEditNeedData({ ...editNeedData, description: e.target.value })}
+                            className="w-full px-4 py-2 border border-[#D4C4A8] rounded-lg focus:ring-2 focus:ring-[#00245D] focus:border-[#00245D]"
+                            rows={6}
+                            required
+                          />
+                        </div>
+                        {submitMessage && <div className={`text-sm p-3 rounded-lg ${submitMessage.includes('Error') ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600'}`}>{submitMessage}</div>}
+                        <div className="flex gap-2">
+                          <button type="submit" disabled={submitting} className="flex-1 py-3 bg-[#00245D] text-white rounded-lg font-medium hover:bg-[#00245D]/90 disabled:opacity-50 transition-colors">
+                            {submitting ? 'Saving...' : 'Update Need'}
+                          </button>
+                          <button type="button" onClick={() => { setEditingNeed(null); setSubmitMessage(''); }} className="px-4 py-3 bg-gray-200 text-gray-700 rounded-lg font-medium hover:bg-gray-300 transition-colors">
                             Cancel
                           </button>
-                        )}
-                      </div>
-                    </form>
+                        </div>
+                      </form>
+                    ) : (
+                      /* Structured form for creating new needs */
+                      <form onSubmit={handleCreateNeed} className="space-y-5">
+                        {/* Title & Category */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-sm font-medium text-[#00245D] mb-1">Need Title *</label>
+                            <input
+                              type="text"
+                              value={newNeed.title}
+                              onChange={(e) => setNewNeed({ ...newNeed, title: e.target.value })}
+                              className="w-full px-4 py-2 border border-[#D4C4A8] rounded-lg focus:ring-2 focus:ring-[#00245D] focus:border-[#00245D]"
+                              placeholder="e.g., Website Development Support"
+                              required
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-[#00245D] mb-1">Category *</label>
+                            <select
+                              value={newNeed.category}
+                              onChange={(e) => setNewNeed({ ...newNeed, category: e.target.value as SkillCategory })}
+                              className="w-full px-4 py-2 border border-[#D4C4A8] rounded-lg focus:ring-2 focus:ring-[#00245D] focus:border-[#00245D]"
+                            >
+                              {SKILL_CATEGORIES.map(cat => (<option key={cat} value={cat}>{cat}</option>))}
+                            </select>
+                          </div>
+                        </div>
+
+                        {/* Key Details Section */}
+                        <div className="bg-[#D4C4A8]/20 rounded-lg p-4">
+                          <h3 className="text-sm font-semibold text-[#00245D] mb-3 flex items-center gap-2">
+                            <span className="w-5 h-5 bg-[#00245D] rounded text-white flex items-center justify-center text-xs">📋</span>
+                            Key Details
+                          </h3>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <div>
+                              <label className="block text-xs font-medium text-[#00245D]/70 mb-1">Location</label>
+                              <input
+                                type="text"
+                                value={newNeed.location}
+                                onChange={(e) => setNewNeed({ ...newNeed, location: e.target.value })}
+                                className="w-full px-3 py-2 text-sm border border-[#D4C4A8] rounded-lg focus:ring-2 focus:ring-[#00245D] focus:border-[#00245D]"
+                                placeholder="e.g., Vancouver, BC or Remote"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-medium text-[#00245D]/70 mb-1">Timeline</label>
+                              <input
+                                type="text"
+                                value={newNeed.timeline}
+                                onChange={(e) => setNewNeed({ ...newNeed, timeline: e.target.value })}
+                                className="w-full px-3 py-2 text-sm border border-[#D4C4A8] rounded-lg focus:ring-2 focus:ring-[#00245D] focus:border-[#00245D]"
+                                placeholder="e.g., ASAP, March 2025, Flexible"
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Overview */}
+                        <div>
+                          <label className="block text-sm font-medium text-[#00245D] mb-1">Project Overview *</label>
+                          <textarea
+                            value={newNeed.overview}
+                            onChange={(e) => setNewNeed({ ...newNeed, overview: e.target.value })}
+                            className="w-full px-4 py-2 border border-[#D4C4A8] rounded-lg focus:ring-2 focus:ring-[#00245D] focus:border-[#00245D]"
+                            rows={3}
+                            placeholder="Describe what the project is about and why it's needed..."
+                            required
+                          />
+                        </div>
+
+                        {/* Scope of Work - Dynamic List */}
+                        <div className="bg-[#99D6EA]/10 rounded-lg p-4">
+                          <h3 className="text-sm font-semibold text-[#00245D] mb-3 flex items-center justify-between">
+                            <span className="flex items-center gap-2">
+                              <span className="w-5 h-5 bg-[#00245D] rounded text-white flex items-center justify-center text-xs">🔧</span>
+                              Scope of Work
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => setNewNeed({ ...newNeed, scopeItems: [...newNeed.scopeItems, ''] })}
+                              className="text-xs px-2 py-1 bg-[#00245D] text-white rounded hover:bg-[#00245D]/80"
+                            >
+                              + Add Item
+                            </button>
+                          </h3>
+                          <div className="space-y-2">
+                            {newNeed.scopeItems.map((item, index) => (
+                              <div key={index} className="flex gap-2">
+                                <span className="w-6 h-8 flex items-center justify-center text-[#00245D]/60 text-sm font-medium">{index + 1}.</span>
+                                <input
+                                  type="text"
+                                  value={item}
+                                  onChange={(e) => {
+                                    const updated = [...newNeed.scopeItems];
+                                    updated[index] = e.target.value;
+                                    setNewNeed({ ...newNeed, scopeItems: updated });
+                                  }}
+                                  className="flex-1 px-3 py-2 text-sm border border-[#D4C4A8] rounded-lg focus:ring-2 focus:ring-[#00245D] focus:border-[#00245D]"
+                                  placeholder="What needs to be done..."
+                                />
+                                {newNeed.scopeItems.length > 1 && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const updated = newNeed.scopeItems.filter((_, i) => i !== index);
+                                      setNewNeed({ ...newNeed, scopeItems: updated });
+                                    }}
+                                    className="px-2 text-red-500 hover:text-red-700"
+                                  >
+                                    ✕
+                                  </button>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Requirements - Dynamic List */}
+                        <div className="bg-[#D4C4A8]/20 rounded-lg p-4">
+                          <h3 className="text-sm font-semibold text-[#00245D] mb-3 flex items-center justify-between">
+                            <span className="flex items-center gap-2">
+                              <span className="w-5 h-5 bg-[#00245D] rounded text-white flex items-center justify-center text-xs">📝</span>
+                              Requirements
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => setNewNeed({ ...newNeed, requirements: [...newNeed.requirements, ''] })}
+                              className="text-xs px-2 py-1 bg-[#00245D] text-white rounded hover:bg-[#00245D]/80"
+                            >
+                              + Add Requirement
+                            </button>
+                          </h3>
+                          <div className="space-y-2">
+                            {newNeed.requirements.map((item, index) => (
+                              <div key={index} className="flex gap-2">
+                                <span className="w-6 h-8 flex items-center justify-center text-[#99D6EA]">•</span>
+                                <input
+                                  type="text"
+                                  value={item}
+                                  onChange={(e) => {
+                                    const updated = [...newNeed.requirements];
+                                    updated[index] = e.target.value;
+                                    setNewNeed({ ...newNeed, requirements: updated });
+                                  }}
+                                  className="flex-1 px-3 py-2 text-sm border border-[#D4C4A8] rounded-lg focus:ring-2 focus:ring-[#00245D] focus:border-[#00245D]"
+                                  placeholder="Skills, experience, or qualifications needed..."
+                                />
+                                {newNeed.requirements.length > 1 && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const updated = newNeed.requirements.filter((_, i) => i !== index);
+                                      setNewNeed({ ...newNeed, requirements: updated });
+                                    }}
+                                    className="px-2 text-red-500 hover:text-red-700"
+                                  >
+                                    ✕
+                                  </button>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Additional Info */}
+                        <div>
+                          <label className="block text-sm font-medium text-[#00245D] mb-1">Additional Information</label>
+                          <textarea
+                            value={newNeed.additionalInfo}
+                            onChange={(e) => setNewNeed({ ...newNeed, additionalInfo: e.target.value })}
+                            className="w-full px-4 py-2 border border-[#D4C4A8] rounded-lg focus:ring-2 focus:ring-[#00245D] focus:border-[#00245D]"
+                            rows={2}
+                            placeholder="Any other details, notes, or context..."
+                          />
+                        </div>
+
+                        {submitMessage && <div className={`text-sm p-3 rounded-lg ${submitMessage.includes('Error') ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600'}`}>{submitMessage}</div>}
+
+                        <button type="submit" disabled={submitting} className="w-full py-3 bg-[#00245D] text-white rounded-lg font-medium hover:bg-[#00245D]/90 disabled:opacity-50 transition-colors">
+                          {submitting ? 'Creating Need...' : '✨ Create Need'}
+                        </button>
+                      </form>
+                    )}
                   </div>
                   <div className="bg-white/95 backdrop-blur-sm rounded-xl shadow-lg hover:shadow-xl transition-shadow p-6 border border-[#D4C4A8]">
                     <h2 className="text-lg font-semibold text-[#00245D] mb-4">Manage Needs</h2>
-                    <div className="space-y-3 max-h-96 overflow-y-auto">
-                      {needs.map(need => (
-                        <div key={need.id} className="p-3 bg-[#D4C4A8]/30 rounded-lg hover:bg-[#D4C4A8]/40 transition-colors">
-                          <div className="flex items-center justify-between">
-                            <Link href={`/admin/needs/${need.id}`} className="flex-1 min-w-0 group">
-                              <p className="font-medium text-[#00245D] truncate group-hover:text-[#00245D]/70 transition-colors cursor-pointer">
-                                {need.title} →
-                              </p>
-                              <p className="text-sm text-[#00245D]/60">{need.category}</p>
-                            </Link>
-                            <button
-                              onClick={() => toggleNeedStatus(need.id, need.isActive)}
-                              className={`px-3 py-1 rounded-full text-sm font-medium ${need.isActive ? 'bg-green-100 text-green-800 hover:bg-green-200' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'}`}
-                            >
-                              {need.isActive ? 'Active' : 'Inactive'}
-                            </button>
-                          </div>
-                          <p className="text-xs text-[#00245D]/50 mt-2 line-clamp-2">{need.description}</p>
-                          <div className="flex gap-2 mt-2">
-                            <Link
-                              href={`/admin/needs/${need.id}`}
-                              className="px-3 py-1 bg-purple-100 text-purple-600 rounded text-sm font-medium hover:bg-purple-200 transition-colors"
-                            >
-                              👥 View Matches
-                            </Link>
-                            <button
-                              onClick={() => handleEditNeed(need)}
-                              className="px-3 py-1 bg-blue-100 text-blue-600 rounded text-sm font-medium hover:bg-blue-200 transition-colors"
-                            >
-                              ✏️ Edit
-                            </button>
-                            <button
-                              onClick={() => setShowDeleteNeedConfirm(need.id)}
-                              className="px-3 py-1 bg-red-100 text-red-600 rounded text-sm font-medium hover:bg-red-200 transition-colors"
-                            >
-                              🗑️ Delete
-                            </button>
-                          </div>
+
+                    {/* Needs Search Bar */}
+                    <div className="mb-4">
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#00245D]/40">🔍</span>
+                        <input
+                          type="text"
+                          placeholder="Search needs by title, description, or category..."
+                          value={needsSearchQuery}
+                          onChange={(e) => setNeedsSearchQuery(e.target.value)}
+                          className="w-full pl-10 pr-4 py-2 border border-[#D4C4A8] rounded-lg focus:ring-2 focus:ring-[#00245D] focus:border-[#00245D]"
+                        />
+                        {needsSearchQuery && (
+                          <button
+                            onClick={() => setNeedsSearchQuery('')}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-[#00245D]/40 hover:text-[#00245D]"
+                            title="Clear search"
+                          >
+                            ✕
+                          </button>
+                        )}
+                      </div>
+                      {needsSearchQuery && (
+                        <p className="mt-2 text-xs text-[#00245D]/60">
+                          {getFilteredNeeds().length} of {needs.length} needs match &quot;{needsSearchQuery}&quot;
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="space-y-3">
+                      {getFilteredNeeds().length === 0 ? (
+                        <div className="py-8 text-center text-[#00245D]/60">
+                          {needsSearchQuery ? `No needs found matching "${needsSearchQuery}"` : 'No needs created yet'}
                         </div>
-                      ))}
+                      ) : (
+                        <>
+                          {getPaginatedNeeds().map(need => {
+                            const responseCounts = needResponseCounts[need.id];
+                            const hasPendingResponses = responseCounts && responseCounts.pending > 0;
+
+                            return (
+                              <div key={need.id} className="p-3 bg-[#D4C4A8]/30 rounded-lg hover:bg-[#D4C4A8]/40 transition-colors">
+                                <div className="flex items-center justify-between">
+                                  <Link href={`/admin/needs/${need.id}`} className="flex-1 min-w-0 group">
+                                    <div className="flex items-center gap-2">
+                                      <p className="font-medium text-[#00245D] truncate group-hover:text-[#00245D]/70 transition-colors cursor-pointer">
+                                        {need.title} →
+                                      </p>
+                                      {hasPendingResponses && (
+                                        <span className="bg-red-500 text-white text-xs font-bold rounded-full min-w-[20px] h-5 px-1.5 flex items-center justify-center animate-pulse shadow-md">
+                                          {responseCounts.pending}
+                                        </span>
+                                      )}
+                                      {responseCounts && !hasPendingResponses && responseCounts.total > 0 && (
+                                        <span className="bg-blue-100 text-blue-700 text-xs font-medium rounded-full px-2 py-0.5">
+                                          {responseCounts.total} response{responseCounts.total !== 1 ? 's' : ''}
+                                        </span>
+                                      )}
+                                    </div>
+                                    <p className="text-sm text-[#00245D]/60">{need.category}</p>
+                                  </Link>
+                                  <button
+                                    onClick={() => toggleNeedStatus(need.id, need.isActive)}
+                                    className={`px-3 py-1 rounded-full text-sm font-medium ${need.isActive ? 'bg-green-100 text-green-800 hover:bg-green-200' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'}`}
+                                  >
+                                    {need.isActive ? 'Active' : 'Inactive'}
+                                  </button>
+                                </div>
+                                <p className="text-xs text-[#00245D]/50 mt-2 line-clamp-2">{need.description}</p>
+                                <div className="flex gap-2 mt-2">
+                                  <Link
+                                    href={`/admin/needs/${need.id}`}
+                                    className={`px-3 py-1 rounded text-sm font-medium transition-colors relative ${hasPendingResponses
+                                      ? 'bg-red-100 text-red-700 hover:bg-red-200 font-semibold'
+                                      : 'bg-purple-100 text-purple-600 hover:bg-purple-200'
+                                      }`}
+                                  >
+                                    {hasPendingResponses ? '🔔 View Responses' : '👥 View Matches'}
+                                  </Link>
+                                  <button
+                                    onClick={() => handleEditNeed(need)}
+                                    className="px-3 py-1 bg-blue-100 text-blue-600 rounded text-sm font-medium hover:bg-blue-200 transition-colors"
+                                  >
+                                    ✏️ Edit
+                                  </button>
+                                  <button
+                                    onClick={() => setShowDeleteNeedConfirm(need.id)}
+                                    className="px-3 py-1 bg-red-100 text-red-600 rounded text-sm font-medium hover:bg-red-200 transition-colors"
+                                  >
+                                    🗑️ Delete
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                          <Pagination
+                            currentPage={needsPage}
+                            totalItems={getFilteredNeeds().length}
+                            itemsPerPage={itemsPerPage}
+                            onPageChange={(page) => { setNeedsPage(page); }}
+                            className="mt-4"
+                          />
+                        </>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1206,8 +1768,9 @@ export default function AdminDashboardPage() {
                 </div>
               )}
             </>
-          )}
-        </main>
+          )
+          }
+        </main >
 
         {/* Delete Confirmation Modal */}
         {

@@ -124,8 +124,8 @@ export async function GET(request: NextRequest) {
 
       if (matchesCategory || matchesSkillName) {
         const multiplier = WILLINGNESS_MULTIPLIERS[skill.willingnessLevel as WillingnessLevel] || 1;
-        const points = skill.isHobby 
-          ? WEIGHTS.HOBBY_SKILL * multiplier 
+        const points = skill.isHobby
+          ? WEIGHTS.HOBBY_SKILL * multiplier
           : WEIGHTS.DIRECT_SKILL * multiplier;
 
         const current = userScores.get(skill.userId) || {
@@ -141,7 +141,7 @@ export async function GET(request: NextRequest) {
         current.matchedSkills.push(skill);
         if (skill.isHobby) current.hobbySkillMatches++;
         else current.directSkillMatches++;
-        
+
         userScores.set(skill.userId, current);
       }
     }
@@ -171,7 +171,7 @@ export async function GET(request: NextRequest) {
         current.score += points;
         current.matchedConnections.push(conn);
         current.connectionMatches++;
-        
+
         userScores.set(conn.userId, current);
       }
     }
@@ -198,6 +198,7 @@ export async function GET(request: NextRequest) {
         userData = {
           email: fields.email?.stringValue || '',
           displayName: fields.displayName?.stringValue || '',
+          profilePhoto: fields.profilePhoto?.stringValue || '',
         };
       }
 
@@ -207,6 +208,7 @@ export async function GET(request: NextRequest) {
         userId,
         userEmail: userData.email || '',
         userName: userData.displayName,
+        userProfilePhoto: userData.profilePhoto,
         score: data.score,
         strengthMeter: 0,
         matchDetails: {

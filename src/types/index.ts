@@ -89,6 +89,10 @@ export interface User {
   onboardingComplete: boolean;
   createdAt: Date;
   updatedAt: Date;
+  invitationId?: string; // ID of the invitation used to join
+  invitationType?: 'personal' | 'public';
+  invitedBy?: string;
+  joinedViaInvitationAt?: Date;
 }
 
 // Skill entry type
@@ -125,6 +129,20 @@ export interface Need {
   updatedAt: Date;
 }
 
+// Need Response (user application/interest in a need)
+export interface NeedResponse {
+  id: string;
+  needId: string;
+  userId: string;
+  userName: string;
+  userEmail: string;
+  message: string;
+  status: 'pending' | 'reviewed' | 'accepted' | 'declined';
+  createdAt: Date;
+  reviewedAt?: Date;
+  adminNotes?: string;
+}
+
 // Caps Score result type
 export interface CapsScoreResult {
   userId: string;
@@ -148,14 +166,20 @@ export interface SearchResult extends CapsScoreResult {
   matchedConnections: Connection[];
 }
 
-// Email invitation type
+// Invitation type (supports both personal email and public links)
+export type InvitationType = 'personal' | 'public';
+
 export interface EmailInvitation {
   id: string;
-  email: string;
+  email?: string; // Optional for public links
   invitedBy: string;
   status: 'pending' | 'accepted' | 'expired';
+  type: InvitationType;
+  name?: string; // Label for public links (e.g., "Community Link")
+  usageCount?: number; // How many times a public link was used
   createdAt: Date;
-  expiresAt: Date;
+  expiresAt?: Date; // Optional - null means never expires
+  token?: string; // The invitation token
 }
 
 // Scoring Configuration (AI-optimized)
@@ -207,6 +231,8 @@ export interface UserWithStats {
   createdAt: Date;
   skillsCount: number;
   connectionsCount: number;
+  invitationId?: string;
+  invitationType?: 'personal' | 'public';
 }
 
 // Invitation with detailed tracking
@@ -215,6 +241,7 @@ export interface InvitationWithDetails extends EmailInvitation {
   inviterName?: string;
   acceptedAt?: Date;
   acceptedByName?: string;
+  invitationLink?: string; // The full invitation URL
 }
 
 // Analytics summary for dashboard

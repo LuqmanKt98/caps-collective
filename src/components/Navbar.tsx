@@ -14,15 +14,15 @@ export default function Navbar() {
 
   const navLinks = userData?.isAdmin
     ? [
-        { href: "/admin", label: "Admin", icon: "⚙️" },
-        { href: "/needs", label: "Needs Board", icon: "📋" },
-        { href: "/search", label: "Search", icon: "🔍" },
-      ]
+      { href: "/admin", label: "Admin", icon: "⚙️" },
+      { href: "/needs", label: "Needs Board", icon: "📋" },
+      { href: "/search", label: "Search", icon: "🔍" },
+    ]
     : [
-        { href: "/dashboard", label: "Dashboard", icon: "📊" },
-        { href: "/needs", label: "Needs Board", icon: "📋" },
-        { href: "/search", label: "Search", icon: "🔍" },
-      ];
+      { href: "/dashboard", label: "Dashboard", icon: "📊" },
+      { href: "/needs", label: "Needs Board", icon: "📋" },
+      { href: "/search", label: "Search", icon: "🔍" },
+    ];
 
   const isActive = (href: string) => pathname === href;
 
@@ -46,11 +46,10 @@ export default function Navbar() {
                 <Link
                   key={link.href}
                   href={link.href}
-                  className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${
-                    isActive(link.href)
-                      ? "bg-[#00245D] text-white"
-                      : "text-[#00245D] hover:text-[#00245D] hover:bg-[#99D6EA]/30"
-                  }`}
+                  className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${isActive(link.href)
+                    ? "bg-[#00245D] text-white"
+                    : "text-[#00245D] hover:text-[#00245D] hover:bg-[#99D6EA]/30"
+                    }`}
                 >
                   <span className="mr-1.5">{link.icon}</span>
                   {link.label}
@@ -84,18 +83,21 @@ export default function Navbar() {
               </svg>
             </button>
 
-            {/* Notifications removed per client request */}
-
             {/* Profile dropdown */}
             <div className="relative">
               <button
                 onClick={() => setMenuOpen(!menuOpen)}
                 className="flex items-center gap-3 p-1.5 rounded-xl hover:bg-[#99D6EA]/20 transition-colors"
               >
-                <div className="w-9 h-9 bg-[#00245D] rounded-xl flex items-center justify-center text-white font-semibold shadow-lg shadow-[#00245D]/20">
-                  {userData?.displayName?.[0] ||
+                <div className="w-9 h-9 bg-[#00245D] rounded-xl flex items-center justify-center text-white font-semibold shadow-lg shadow-[#00245D]/20 overflow-hidden">
+                  {userData?.profilePhoto ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={userData.profilePhoto} alt={userData?.displayName || "Profile"} className="w-full h-full object-cover" />
+                  ) : (
+                    userData?.displayName?.[0] ||
                     user?.email?.[0]?.toUpperCase() ||
-                    "U"}
+                    "U"
+                  )}
                 </div>
                 <div className="hidden md:block text-left">
                   <div className="text-sm font-medium text-[#00245D]">
@@ -160,11 +162,10 @@ export default function Navbar() {
                 key={link.href}
                 href={link.href}
                 onClick={() => setMobileMenuOpen(false)}
-                className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium ${
-                  isActive(link.href)
-                    ? "bg-[#00245D] text-white"
-                    : "text-[#00245D] hover:bg-[#99D6EA]/30"
-                }`}
+                className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium ${isActive(link.href)
+                  ? "bg-[#00245D] text-white"
+                  : "text-[#00245D] hover:bg-[#99D6EA]/30"
+                  }`}
               >
                 <span>{link.icon}</span>
                 {link.label}
