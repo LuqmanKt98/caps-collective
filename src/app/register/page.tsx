@@ -79,7 +79,9 @@ function RegisterPageContent() {
 
     try {
       const displayName = `${firstName} ${lastName}`;
-      const user = await signUp(email, password, displayName, {
+
+      // Prepare user data - include placeholder for invitation info that will be updated
+      const userDataToCreate: any = {
         firstName,
         lastName,
         phoneNumber,
@@ -87,20 +89,33 @@ function RegisterPageContent() {
         location,
         linkedinUrl,
         profilePhoto,
-      });
+      };
+
+      // If there's an invitation token, we'll mark it for processing
+      // The actual linking will happen via the accept API
+      if (invitationToken) {
+        userDataToCreate._pendingInvitation = invitationToken;
+      }
+
+      const user = await signUp(email, password, displayName, userDataToCreate);
 
       // If registered via invitation, mark invitation as accepted
       if (invitationToken) {
         try {
           const idToken = await user.getIdToken();
-          await fetch('/api/invitations/accept', {
+          const acceptResponse = await fetch('/api/invitations/accept', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
               Authorization: `Bearer ${idToken}`,
             },
-            body: JSON.stringify({ token: invitationToken, userId: user.uid }),
+            body: JSON.stringify({ token: invitationToken, userId: user.uid, userEmail: email, userName: displayName }),
           });
+
+          const acceptData = await acceptResponse.json();
+          if (!acceptData.success) {
+            console.error('Failed to accept invitation:', acceptData.error);
+          }
         } catch (e) {
           console.error('Failed to mark invitation as accepted', e);
         }

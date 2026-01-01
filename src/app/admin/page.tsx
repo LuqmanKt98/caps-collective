@@ -1045,7 +1045,9 @@ export default function AdminDashboardPage() {
                                     <h4 className="font-semibold text-blue-900">{publicLink.name || 'Public Invitation Link'}</h4>
                                     <span className="px-2.5 py-0.5 bg-green-500 text-white text-xs font-bold rounded-full">● Active</span>
                                   </div>
-                                  <p className="text-xs text-blue-700 mt-1.5">Created {new Date(publicLink.createdAt).toLocaleDateString()} • 0 sign-ups</p>
+                                  <p className="text-xs text-blue-700 mt-1.5">
+                                    Created {new Date(publicLink.createdAt).toLocaleDateString()} • {users.filter(u => u.invitationId === publicLink.id).length} sign-ups
+                                  </p>
                                 </div>
                               </div>
 
@@ -1061,8 +1063,8 @@ export default function AdminDashboardPage() {
                                     copyToClipboard(publicLink.invitationLink || '', publicLink.id);
                                   }}
                                   className={`px-4 py-2 rounded-lg font-semibold transition-all flex items-center gap-2 ${copiedLinkId === publicLink.id
-                                      ? 'bg-green-600 text-white'
-                                      : 'bg-blue-600 text-white hover:bg-blue-700'
+                                    ? 'bg-green-600 text-white'
+                                    : 'bg-blue-600 text-white hover:bg-blue-700'
                                     }`}
                                 >
                                   {copiedLinkId === publicLink.id ? (
@@ -1119,10 +1121,14 @@ export default function AdminDashboardPage() {
                                     <span>Created {new Date(inv.createdAt).toLocaleDateString()}</span>
                                     {inv.type === 'public' && (
                                       <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">
-                                        {inv.usageCount || 0} sign-ups
+                                        {users.filter(u => u.invitationId === inv.id).length} sign-ups
                                       </span>
                                     )}
-
+                                    {inv.type === 'personal' && inv.status === 'accepted' && (
+                                      <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">
+                                        ✓ Joined {inv.acceptedAt ? `on ${new Date(inv.acceptedAt).toLocaleDateString()}` : ''}
+                                      </span>
+                                    )}
                                   </div>
                                 </div>
                                 <div className="flex items-center gap-2">
