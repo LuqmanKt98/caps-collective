@@ -5,14 +5,18 @@
 The invitation links were showing `http://localhost:3000` instead of your Vercel URL. This has been fixed by implementing **automatic Vercel URL detection**.
 
 ### Changes Made:
-1. **Updated `src/app/api/invitations/route.ts`** - Both GET and POST endpoints now automatically detect Vercel URL
-2. **Updated `src/lib/firebaseInvitations.ts`** - Firebase email links now use Vercel URL in production
-3. **Automatic Detection Logic**:
+1. **Updated `src/app/api/invitations/route.ts`** - Both GET and POST endpoints now use production URL
+2. **Updated `src/lib/firebaseInvitations.ts`** - Firebase email links now use production URL
+3. **Production URL Detection Logic**:
    ```typescript
-   const baseUrl = process.env.VERCEL_URL 
-       ? `https://${process.env.VERCEL_URL}`
+   const baseUrl = process.env.VERCEL_PROJECT_PRODUCTION_URL 
+       ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
        : process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
    ```
+
+### Why This Matters:
+- ❌ **Before**: Used `VERCEL_URL` which gives preview URLs like `https://caps-collective-4idcm5k6s-luqmankt98s-projects.vercel.app`
+- ✅ **After**: Uses `VERCEL_PROJECT_PRODUCTION_URL` which gives clean production URL like `https://caps-collective.vercel.app`
 
 ## 🚀 How It Works
 
@@ -21,8 +25,9 @@ The invitation links were showing `http://localhost:3000` instead of your Vercel
 - No configuration needed
 
 ### In Production (Vercel)
-- **Automatically** uses `https://[your-project].vercel.app`
-- Vercel provides `VERCEL_URL` environment variable automatically
+- **Automatically** uses `https://caps-collective.vercel.app` (your clean production URL)
+- Vercel provides `VERCEL_PROJECT_PRODUCTION_URL` environment variable automatically
+- This is the **production domain**, not the ugly preview deployment URLs
 - No manual configuration required!
 
 ## 📋 Vercel Environment Variables to Configure
@@ -101,14 +106,14 @@ vercel env add SMTP_USER
    - Vercel will automatically deploy
 
 2. **Test Invitation Links**:
-   - Go to your admin panel
+   - Go to your admin panel at `https://caps-collective.vercel.app/admin`
    - Create a new invitation link
    - **Expected Result**: Link should show `https://caps-collective.vercel.app/register?invitation=...`
-   - **Not**: `http://localhost:3000/register?invitation=...`
+   - **Not**: `https://caps-collective-4idcm5k6s-luqmankt98s-projects.vercel.app/register?invitation=...`
 
 3. **Verify in Different Environments**:
-   - Production: `https://caps-collective.vercel.app`
-   - Preview branches: `https://caps-collective-git-[branch].vercel.app`
+   - Production: `https://caps-collective.vercel.app` ✅ Clean URL
+   - Preview branches: Links will still use production URL, not preview URL ✅
 
 ## 🐛 Troubleshooting
 
