@@ -29,7 +29,7 @@ export default function SkillsPage() {
     const { user } = useAuth();
     const router = useRouter();
     const [skills, setSkills] = useState<SkillEntry[]>([
-        { category: 'Trades', skillName: '', willingnessLevel: 'advice', isHobby: false }
+        { category: 'Sports & Coaching', skillName: '', willingnessLevel: 'advice', isHobby: false }
     ]);
     const [deletedIds, setDeletedIds] = useState<string[]>([]);
     const [loading, setLoading] = useState(true);
@@ -66,7 +66,7 @@ export default function SkillsPage() {
     }, [user]);
 
     const addSkillEntry = () => {
-        setSkills([...skills, { category: 'Trades', skillName: '', willingnessLevel: 'advice', isHobby: false }]);
+        setSkills([...skills, { category: 'Sports & Coaching', skillName: '', willingnessLevel: 'advice', isHobby: false }]);
     };
 
     const removeSkillEntry = (index: number) => {
@@ -79,7 +79,7 @@ export default function SkillsPage() {
             setSkills(skills.filter((_, i) => i !== index));
         } else if (skills.length === 1 && skillToRemove.id) {
             // If it's the last one and has ID, remove it and replace with empty
-            setSkills([{ category: 'Trades', skillName: '', willingnessLevel: 'advice', isHobby: false }]);
+            setSkills([{ category: 'Sports & Coaching', skillName: '', willingnessLevel: 'advice', isHobby: false }]);
         }
     };
 
