@@ -28,7 +28,7 @@ export default function AdminDashboardPage() {
   const [needs, setNeeds] = useState<Need[]>([]);
   const [newNeed, setNewNeed] = useState({
     title: '',
-    category: 'Technology' as SkillCategory,
+    category: 'Sports & Coaching' as SkillCategory,
     // Structured fields for formatted description
     location: '',
     timeline: '',
@@ -82,7 +82,7 @@ export default function AdminDashboardPage() {
 
   // Edit need state
   const [editingNeed, setEditingNeed] = useState<Need | null>(null);
-  const [editNeedData, setEditNeedData] = useState({ title: '', description: '', category: 'Technology' as SkillCategory });
+  const [editNeedData, setEditNeedData] = useState({ title: '', description: '', category: 'Sports & Coaching' as SkillCategory });
 
   // Clear invitation state
   const [showClearInvitationsConfirm, setShowClearInvitationsConfirm] = useState(false);
@@ -233,7 +233,7 @@ export default function AdminDashboardPage() {
         setSubmitMessage('Need created successfully!');
         setNewNeed({
           title: '',
-          category: 'Technology',
+          category: 'Sports & Coaching',
           location: '',
           timeline: '',
           overview: '',
