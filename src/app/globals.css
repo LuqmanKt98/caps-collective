@@ -16,7 +16,7 @@
   --wfc-silver: #C0C0C0;
 
   /* Legacy mappings for compatibility */
-  --background: var(--wfc-tan);
+  --background: transparent;
   --foreground: var(--wfc-navy);
   --primary: var(--wfc-navy);
   --primary-light: var(--wfc-navy-light);
@@ -36,7 +36,7 @@
 }
 
 @theme inline {
-  --color-background: var(--background);
+  --color-background: transparent;
   --color-foreground: var(--foreground);
   --font-sans: 'Montserrat', system-ui, -apple-system, sans-serif;
   --font-mono: var(--font-geist-mono);
@@ -51,10 +51,41 @@
   box-sizing: border-box;
 }
 
+html {
+  overflow-x: hidden;
+  background-color: transparent;
+}
+
 body {
   color: var(--foreground);
   font-family: 'Montserrat', system-ui, -apple-system, sans-serif;
   min-height: 100vh;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+  background-image: url('/caps-background.webp');
+  background-repeat: no-repeat;
+  background-size: cover;
+  background-position: center;
+  background-attachment: fixed;
+}
+
+/* Responsive container for safe area on mobile */
+.container {
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+/* Hide scrollbar while maintaining scroll functionality */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  /* IE and Edge */
+  scrollbar-width: none;
+  /* Firefox */
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+  /* Chrome, Safari and Opera */
 }
 
 /* Typography - Headers use Obviously/Montserrat Heavy Bold */

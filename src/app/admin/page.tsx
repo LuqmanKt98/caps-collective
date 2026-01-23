@@ -759,38 +759,37 @@ export default function AdminDashboardPage() {
 
   return (
     <ProtectedRoute requireAdmin>
-      <div className="min-h-screen bg-pattern">
+      <div className="min-h-screen bg-pattern overflow-x-hidden">
         <Navbar />
-        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <div className="mb-8">
-            <h1 className="text-3xl font-bold text-[#00245D]">Admin Dashboard</h1>
-            <p className="mt-1 text-[#00245D]/60">Manage community needs, users, and platform settings</p>
+        <main className="max-w-7xl mx-auto px-3 sm:px-4 md:px-6 lg:px-8 py-4 sm:py-6 md:py-8">
+          <div className="mb-6 md:mb-8">
+            <h1 className="text-2xl sm:text-3xl font-bold text-[#00245D]">Admin Dashboard</h1>
+            <p className="mt-1 text-sm sm:text-base text-[#00245D]/60">Manage community needs, users, and platform settings</p>
           </div>
 
-          {/* Tabs */}
-          <div className="flex gap-2 mb-6 pb-2">
-            <button onClick={() => setActiveTab('analytics')} className={`px-4 py-2 rounded-lg font-medium transition-all whitespace-nowrap ${activeTab === 'analytics' ? 'bg-[#00245D] text-white shadow-xl' : 'bg-white/95 backdrop-blur-sm text-[#00245D] hover:bg-[#99D6EA]/30 shadow-lg hover:shadow-xl'}`}>
-              📊 Analytics
+          {/* Tabs - wraps into multiple rows on mobile */}
+          <div className="flex flex-wrap gap-2 mb-4 md:mb-6">
+            <button onClick={() => setActiveTab('analytics')} className={`px-3 py-1.5 sm:py-2 rounded-lg font-medium transition-all whitespace-nowrap text-xs sm:text-sm flex-shrink-0 ${activeTab === 'analytics' ? 'bg-[#00245D] text-white shadow-lg' : 'bg-white/95 backdrop-blur-sm text-[#00245D] hover:bg-[#99D6EA]/30 shadow-md'}`}>
+              📊 Stats
             </button>
-            <button onClick={() => setActiveTab('invitations')} className={`px-4 py-2 rounded-lg font-medium transition-all whitespace-nowrap ${activeTab === 'invitations' ? 'bg-[#00245D] text-white shadow-xl' : 'bg-white/95 backdrop-blur-sm text-[#00245D] hover:bg-[#99D6EA]/30 shadow-lg hover:shadow-xl'}`}>
-              📧 Invitations
+            <button onClick={() => setActiveTab('invitations')} className={`px-3 py-1.5 sm:py-2 rounded-lg font-medium transition-all whitespace-nowrap text-xs sm:text-sm flex-shrink-0 ${activeTab === 'invitations' ? 'bg-[#00245D] text-white shadow-lg' : 'bg-white/95 backdrop-blur-sm text-[#00245D] hover:bg-[#99D6EA]/30 shadow-md'}`}>
+              📧 Invite
             </button>
-            <button onClick={() => setActiveTab('users')} className={`px-4 py-2 rounded-lg font-medium transition-all whitespace-nowrap relative ${activeTab === 'users' ? 'bg-[#00245D] text-white shadow-xl' : 'bg-white/95 backdrop-blur-sm text-[#00245D] hover:bg-[#99D6EA]/30 shadow-lg hover:shadow-xl'}`}>
+            <button onClick={() => setActiveTab('users')} className={`px-3 py-1.5 sm:py-2 rounded-lg font-medium transition-all whitespace-nowrap text-xs sm:text-sm flex-shrink-0 relative ${activeTab === 'users' ? 'bg-[#00245D] text-white shadow-lg' : 'bg-white/95 backdrop-blur-sm text-[#00245D] hover:bg-[#99D6EA]/30 shadow-md'}`}>
               👥 Users
-
             </button>
-            <button onClick={() => setActiveTab('needs')} className={`px-4 py-2 rounded-lg font-medium transition-all whitespace-nowrap relative ${activeTab === 'needs' ? 'bg-[#00245D] text-white shadow-xl' : 'bg-white/95 backdrop-blur-sm text-[#00245D] hover:bg-[#99D6EA]/30 shadow-lg hover:shadow-xl'}`}>
+            <button onClick={() => setActiveTab('needs')} className={`px-3 py-1.5 sm:py-2 rounded-lg font-medium transition-all whitespace-nowrap text-xs sm:text-sm flex-shrink-0 relative ${activeTab === 'needs' ? 'bg-[#00245D] text-white shadow-lg' : 'bg-white/95 backdrop-blur-sm text-[#00245D] hover:bg-[#99D6EA]/30 shadow-md'}`}>
               📋 Needs
               {pendingResponsesCount > 0 && (
-                <span className="absolute top-0 right-0 transform translate-x-1/2 -translate-y-1/2 bg-red-500 text-white text-xs font-bold rounded-full min-w-[20px] h-5 px-1.5 flex items-center justify-center animate-pulse shadow-lg border-2 border-white">
+                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold rounded-full min-w-[16px] h-4 px-1 flex items-center justify-center animate-pulse shadow border border-white">
                   {pendingResponsesCount}
                 </span>
               )}
             </button>
-            <button onClick={() => setActiveTab('scoring')} className={`px-4 py-2 rounded-lg font-medium transition-all whitespace-nowrap ${activeTab === 'scoring' ? 'bg-[#00245D] text-white shadow-xl' : 'bg-white/95 backdrop-blur-sm text-[#00245D] hover:bg-[#99D6EA]/30 shadow-lg hover:shadow-xl'}`}>
-              🤖 AI Scoring
+            <button onClick={() => setActiveTab('scoring')} className={`px-3 py-1.5 sm:py-2 rounded-lg font-medium transition-all whitespace-nowrap text-xs sm:text-sm flex-shrink-0 ${activeTab === 'scoring' ? 'bg-[#00245D] text-white shadow-lg' : 'bg-white/95 backdrop-blur-sm text-[#00245D] hover:bg-[#99D6EA]/30 shadow-md'}`}>
+              🤖 AI
             </button>
-            <button onClick={() => setActiveTab('settings')} className={`px-4 py-2 rounded-lg font-medium transition-all whitespace-nowrap ${activeTab === 'settings' ? 'bg-[#00245D] text-white shadow-xl' : 'bg-white/95 backdrop-blur-sm text-[#00245D] hover:bg-[#99D6EA]/30 shadow-lg hover:shadow-xl'}`}>
+            <button onClick={() => setActiveTab('settings')} className={`px-3 py-1.5 sm:py-2 rounded-lg font-medium transition-all whitespace-nowrap text-xs sm:text-sm flex-shrink-0 ${activeTab === 'settings' ? 'bg-[#00245D] text-white shadow-lg' : 'bg-white/95 backdrop-blur-sm text-[#00245D] hover:bg-[#99D6EA]/30 shadow-md'}`}>
               ⚙️ Settings
             </button>
           </div>
@@ -805,25 +804,25 @@ export default function AdminDashboardPage() {
               {activeTab === 'analytics' && analytics && (
                 <div className="space-y-6">
                   {/* Key Metrics */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                    <div className="bg-white/95 backdrop-blur-sm rounded-xl p-6 border border-[#D4C4A8] shadow-lg hover:shadow-xl transition-shadow">
+                  <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+                    <div className="bg-white/95 backdrop-blur-sm rounded-xl p-4 sm:p-6 border border-[#D4C4A8] shadow-lg hover:shadow-xl transition-shadow">
                       <div className="text-sm text-[#00245D]/60 font-medium">Total Users</div>
-                      <div className="text-3xl font-bold text-[#00245D] mt-2">{analytics.totalUsers}</div>
+                      <div className="text-2xl sm:text-3xl font-bold text-[#00245D] mt-1 sm:mt-2">{analytics.totalUsers}</div>
                       <div className="text-xs text-[#00245D]/50 mt-1">{analytics.totalAdmins} admins</div>
                     </div>
-                    <div className="bg-white/95 backdrop-blur-sm rounded-xl p-6 border border-[#D4C4A8] shadow-lg hover:shadow-xl transition-shadow">
+                    <div className="bg-white/95 backdrop-blur-sm rounded-xl p-4 sm:p-6 border border-[#D4C4A8] shadow-lg hover:shadow-xl transition-shadow">
                       <div className="text-sm text-[#00245D]/60 font-medium">Onboarding</div>
-                      <div className="text-3xl font-bold text-green-600 mt-2">{analytics.onboardedUsers}</div>
+                      <div className="text-2xl sm:text-3xl font-bold text-green-600 mt-1 sm:mt-2">{analytics.onboardedUsers}</div>
                       <div className="text-xs text-[#00245D]/50 mt-1">{analytics.pendingOnboarding} pending</div>
                     </div>
-                    <div className="bg-white/95 backdrop-blur-sm rounded-xl p-6 border border-[#D4C4A8] shadow-lg hover:shadow-xl transition-shadow">
+                    <div className="bg-white/95 backdrop-blur-sm rounded-xl p-4 sm:p-6 border border-[#D4C4A8] shadow-lg hover:shadow-xl transition-shadow">
                       <div className="text-sm text-[#00245D]/60 font-medium">Community Data</div>
-                      <div className="text-3xl font-bold text-[#99D6EA] mt-2">{analytics.totalSkills}</div>
+                      <div className="text-2xl sm:text-3xl font-bold text-[#99D6EA] mt-1 sm:mt-2">{analytics.totalSkills}</div>
                       <div className="text-xs text-[#00245D]/50 mt-1">{analytics.totalConnections} connections</div>
                     </div>
-                    <div className="bg-white/95 backdrop-blur-sm rounded-xl p-6 border border-[#D4C4A8] shadow-lg hover:shadow-xl transition-shadow">
+                    <div className="bg-white/95 backdrop-blur-sm rounded-xl p-4 sm:p-6 border border-[#D4C4A8] shadow-lg hover:shadow-xl transition-shadow">
                       <div className="text-sm text-[#00245D]/60 font-medium">Active Needs</div>
-                      <div className="text-3xl font-bold text-[#00245D] mt-2">{analytics.activeNeeds}</div>
+                      <div className="text-2xl sm:text-3xl font-bold text-[#00245D] mt-1 sm:mt-2">{analytics.activeNeeds}</div>
                       <div className="text-xs text-[#00245D]/50 mt-1">of {analytics.totalNeeds} total</div>
                     </div>
                   </div>

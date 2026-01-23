@@ -126,7 +126,7 @@ export default function DashboardPage() {
           ) : (
             <>
               {/* Stats Row */}
-              <div className="grid grid-cols-3 gap-4 mb-8">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
                 {[
                   { label: 'Skills', value: skills.length, icon: '⚽', color: 'bg-[#00245D]' },
                   { label: 'Connections', value: connections.length, icon: '🤝', color: 'bg-[#99D6EA]' },

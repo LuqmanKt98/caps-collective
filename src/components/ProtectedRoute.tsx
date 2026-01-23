@@ -59,7 +59,7 @@ export default function ProtectedRoute({
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#D4C4A8' }}>
+      <div className="min-h-screen flex items-center justify-center bg-pattern">
         <div className="animate-spin rounded-full h-12 w-12 border-4 border-[#99D6EA] border-t-[#00245D]"></div>
       </div>
     );
