@@ -70,7 +70,7 @@ export default function Home() {
             {BRANDING.heroTagline}
           </div>
           <h2 className="text-3xl sm:text-4xl md:text-5xl lg:text-7xl font-black text-[#00245D] mb-4 md:mb-6 leading-tight">
-            <span className="text-[#94C2E0] drop-shadow-[0_2px_4px_rgba(0,36,93,0.5)]">{BRANDING.portalName}</span>
+            <span className="text-[#004CC8] drop-shadow-[0_2px_4px_rgba(0,36,93,0.5)]">{BRANDING.portalName}</span>
           </h2>
           {/* TODO: Pending final copy from client - update in src/lib/branding.ts */}
           <p className="text-base md:text-lg lg:text-xl text-[#00245D]/80 mb-8 md:mb-10 max-w-2xl mx-auto leading-relaxed whitespace-pre-line px-2">
