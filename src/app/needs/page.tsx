@@ -6,7 +6,8 @@ import ProtectedRoute from '@/components/ProtectedRoute';
 import Navbar from '@/components/Navbar';
 import Pagination from '@/components/Pagination';
 import Link from 'next/link';
-import { Need, SkillCategory, NeedResponse } from '@/types';
+import AdminNeedModal from '@/components/AdminNeedModal';
+import { Need, SKILL_CATEGORIES, SkillCategory, NeedResponse } from '@/types';
 
 interface CategoryStat {
   category: SkillCategory;
@@ -35,49 +36,53 @@ const CATEGORY_ICONS: Record<string, string> = {
 };
 
 export default function NeedsBoardPage() {
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
   const [categoryStats, setCategoryStats] = useState<CategoryStat[]>([]);
   const [needs, setNeeds] = useState<Need[]>([]);
   const [userResponses, setUserResponses] = useState<NeedResponse[]>([]);
+  const [isAddNeedModalOpen, setIsAddNeedModalOpen] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<SkillCategory | null>(null);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 9;
 
-  useEffect(() => {
-    async function fetchNeeds() {
-      try {
-        const token = await user?.getIdToken();
-        const response = await fetch('/api/needs', {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-          },
-        });
-        const data = await response.json();
+  const fetchNeeds = async () => {
+    try {
+      setLoading(true);
+      const token = await user?.getIdToken();
 
-        if (data.success) {
-          setNeeds(data.data.needs);
-          setCategoryStats(data.data.categoryStats);
-        }
+      const [needsRes, responsesRes] = await Promise.all([
+        fetch('/api/needs', {
+          headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+        }),
+        token ? fetch(`/api/need-responses?userOnly=true`, {
+          headers: { 'Authorization': `Bearer ${token}` },
+        }) : Promise.resolve({ ok: false, json: () => Promise.resolve({ success: false }) })
+      ]);
 
-        // Fetch user's responses
-        const responsesRes = await fetch(`/api/need-responses?userOnly=true`, {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-          },
-        });
+      const needsData = await needsRes.json();
+
+      if (needsData.success) {
+        setNeeds(needsData.data.needs);
+        setCategoryStats(needsData.data.categoryStats);
+      }
+
+      // Handle user responses if logged in
+      if (token && responsesRes.ok) {
         const responsesData = await responsesRes.json();
         if (responsesData.success) {
           setUserResponses(responsesData.data.responses);
         }
-      } catch (error) {
-        console.error('Error fetching needs:', error);
-      } finally {
-        setLoading(false);
       }
+    } catch (error) {
+      console.error('Error fetching needs:', error);
+    } finally {
+      setLoading(false);
     }
+  };
 
+  useEffect(() => {
     fetchNeeds();
   }, [user]);
 
@@ -143,12 +148,22 @@ export default function NeedsBoardPage() {
       <div className="min-h-screen bg-pattern">
         <Navbar />
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <div className="mb-8 animate-fadeIn">
-            <h1 className="text-3xl font-bold text-[#00245D] flex items-center gap-3">
-              <span className="w-10 h-10 bg-[#00245D] rounded-xl flex items-center justify-center text-white text-lg shadow-lg">📋</span>
-              Needs Board
-            </h1>
-            <p className="mt-2 text-[#00245D]/60">Browse community needs by category and see where you can help.</p>
+          <div className="mb-8 animate-fadeIn flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <h1 className="text-3xl font-bold text-[#00245D] flex items-center gap-3">
+                <span className="w-10 h-10 bg-[#00245D] rounded-xl flex items-center justify-center text-white text-lg shadow-lg">📋</span>
+                Needs Board
+              </h1>
+              <p className="mt-2 text-[#00245D]/60">Browse community needs by category and see where you can help.</p>
+            </div>
+            {isAdmin && (
+              <button
+                onClick={() => setIsAddNeedModalOpen(true)}
+                className="inline-flex items-center justify-center gap-2 bg-[#00245D] text-white px-5 py-2.5 rounded-xl font-semibold hover:bg-[#00245D]/90 transition-all hover:-translate-y-0.5 shadow-lg hover:shadow-xl"
+              >
+                <span>+</span> Add Need
+              </button>
+            )}
           </div>
 
           {/* Search Bar */}
@@ -208,13 +223,21 @@ export default function NeedsBoardPage() {
               <div>
                 <h2 className="text-lg font-bold text-[#00245D] mb-4 flex items-center gap-2">
                   {selectedCategory ? `${selectedCategory} Needs` : 'All Needs'}
-                  <span className="text-sm font-normal text-[#00245D]/60 bg-[#D4C4A8]/50 px-3 py-1 rounded-full">{filteredNeeds.length} results</span>
+                  <span className="text-sm font-normal text-[#00245D]/60 bg-[#00245D]/5 px-3 py-1 rounded-full">{filteredNeeds.length} results</span>
                 </h2>
 
                 {filteredNeeds.length === 0 ? (
                   <div className="bg-white/95 backdrop-blur-sm rounded-2xl p-12 text-center border border-[#D4C4A8] shadow-lg">
                     <div className="text-5xl mb-4">🔍</div>
-                    <p className="text-[#00245D]/60 text-lg">No active needs in this category.</p>
+                    <p className="text-[#00245D]/60 text-lg">No active needs found.</p>
+                    {isAdmin && (
+                      <button
+                        onClick={() => setIsAddNeedModalOpen(true)}
+                        className="mt-6 inline-flex items-center gap-2 bg-[#00245D] text-white px-6 py-2.5 rounded-xl font-medium hover:bg-[#00245D]/90 transition-all hover:-translate-y-0.5 shadow-lg hover:shadow-xl"
+                      >
+                        <span>+</span> Add New Need
+                      </button>
+                    )}
                   </div>
                 ) : (
                   <>
@@ -226,12 +249,12 @@ export default function NeedsBoardPage() {
                             <div className="flex items-start justify-between mb-4">
                               <div className={`w-12 h-12 ${getCategoryColor(need.category)} rounded-xl flex items-center justify-center text-xl shadow-lg group-hover:scale-110 transition-transform`}>{CATEGORY_ICONS[need.category] || '📋'}</div>
                               <div className="flex flex-col items-end gap-2">
-                                <span className="text-xs font-medium text-[#00245D]/60 bg-[#D4C4A8]/50 px-3 py-1 rounded-full">{need.category}</span>
+                                <span className="text-xs font-medium text-[#00245D]/60 bg-[#00245D]/5 px-3 py-1 rounded-full">{need.category}</span>
                                 {userResponse && (
                                   <span className={`text-xs font-bold px-2 py-1 rounded-full whitespace-nowrap shadow-sm ${userResponse.status === 'accepted' ? 'bg-green-100 text-green-700 border border-green-200' :
-                                      userResponse.status === 'declined' ? 'bg-red-100 text-red-700 border border-red-200' :
-                                        userResponse.status === 'reviewed' ? 'bg-blue-100 text-blue-700 border border-blue-200' :
-                                          'bg-yellow-100 text-yellow-700 border border-yellow-200'
+                                    userResponse.status === 'declined' ? 'bg-red-100 text-red-700 border border-red-200' :
+                                      userResponse.status === 'reviewed' ? 'bg-blue-100 text-blue-700 border border-blue-200' :
+                                        'bg-yellow-100 text-yellow-700 border border-yellow-200'
                                     }`}>
                                     {userResponse.status === 'accepted' ? '✓ Accepted' :
                                       userResponse.status === 'declined' ? '✗ Declined' :
@@ -265,6 +288,13 @@ export default function NeedsBoardPage() {
             </>
           )}
         </main>
+
+        {/* Admin Add Need Modal */}
+        <AdminNeedModal
+          isOpen={isAddNeedModalOpen}
+          onClose={() => setIsAddNeedModalOpen(false)}
+          onSuccess={fetchNeeds}
+        />
       </div>
     </ProtectedRoute>
   );

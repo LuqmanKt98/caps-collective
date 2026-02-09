@@ -6,6 +6,7 @@ import ProtectedRoute from '@/components/ProtectedRoute';
 import Navbar from '@/components/Navbar';
 import Pagination from '@/components/Pagination';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import PasswordInput from '@/components/PasswordInput';
 import {
   SKILL_CATEGORIES,
@@ -15,14 +16,24 @@ import {
   InvitationWithDetails,
   InvitationType,
   UserWithStats,
-  AnalyticsSummary
+  AnalyticsSummary,
+  Skill,
+  Connection
 } from '@/types';
 
 type TabType = 'needs' | 'invitations' | 'users' | 'analytics' | 'scoring' | 'settings';
 
 export default function AdminDashboardPage() {
   const { user } = useAuth();
+  const searchParams = useSearchParams();
   const [activeTab, setActiveTab] = useState<TabType>('analytics');
+
+  useEffect(() => {
+    const tab = searchParams.get('tab');
+    if (tab && ['needs', 'invitations', 'users', 'analytics', 'scoring', 'settings'].includes(tab)) {
+      setActiveTab(tab as TabType);
+    }
+  }, [searchParams]);
 
   // Needs state
   const [needs, setNeeds] = useState<Need[]>([]);
@@ -56,6 +67,90 @@ export default function AdminDashboardPage() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
   const [showDeleteNeedConfirm, setShowDeleteNeedConfirm] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Tooltip state for skills
+  const [skillTooltip, setSkillTooltip] = useState<{
+    x: number;
+    y: number;
+    skills: string[];
+    visible: boolean;
+  }>({ x: 0, y: 0, skills: [], visible: false });
+
+  const handleTooltipEnter = (e: React.MouseEvent, skills: string[]) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    setSkillTooltip({
+      x: rect.left + window.scrollX,
+      y: rect.bottom + window.scrollY,
+      skills,
+      visible: true
+    });
+  };
+
+  const handleTooltipLeave = () => {
+    setSkillTooltip(prev => ({ ...prev, visible: false }));
+  };
+
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+
+  // Modal pagination state
+  const [modalSkillsPage, setModalSkillsPage] = useState(1);
+  const [modalConnectionsPage, setModalConnectionsPage] = useState(1);
+
+  // Get all unique skills from users for autocomplete
+  const uniqueSkills = Array.from(new Set(users.flatMap(u => u.skills || []))).sort();
+
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const query = e.target.value;
+    setSearchQuery(query);
+
+    if (query.trim().length > 0) {
+      const matches = uniqueSkills
+        .filter(skill => skill.toLowerCase().includes(query.toLowerCase()))
+        .slice(0, 5);
+      setSuggestions(matches);
+      setShowSuggestions(true);
+    } else {
+      setShowSuggestions(false);
+    }
+  };
+
+  const selectSuggestion = (skill: string) => {
+    setSearchQuery(skill);
+    setShowSuggestions(false);
+  };
+
+  // Helper to parse Firestore timestamps
+  const parseFirestoreDate = (date: any): Date | null => {
+    if (!date) return null;
+    // Handle Firestore Timestamp with _seconds
+    if (date._seconds) {
+      return new Date(date._seconds * 1000);
+    }
+    // Handle toDate method (Firestore Timestamp)
+    if (typeof date.toDate === 'function') {
+      return date.toDate();
+    }
+    // Handle regular Date or ISO string
+    const parsed = new Date(date);
+    return isNaN(parsed.getTime()) ? null : parsed;
+  };
+
+  const formatDate = (date: any, options?: Intl.DateTimeFormatOptions): string => {
+    const parsed = parseFirestoreDate(date);
+    if (!parsed) return '-';
+    return parsed.toLocaleDateString('en-US', options || { year: 'numeric', month: 'long', day: 'numeric' });
+  };
+
+  const formatDateTime = (date: any): string => {
+    const parsed = parseFirestoreDate(date);
+    if (!parsed) return '-';
+    return parsed.toLocaleString('en-US', {
+      year: 'numeric', month: 'short', day: 'numeric',
+      hour: '2-digit', minute: '2-digit'
+    });
+  };
+
   const [togglingAdmin, setTogglingAdmin] = useState<string | null>(null);
 
   // Analytics state
@@ -166,6 +261,60 @@ export default function AdminDashboardPage() {
       console.error('Error fetching data:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // User details modal state
+  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+  const [userDetails, setUserDetails] = useState<{
+    user: UserWithStats;
+    skills: Skill[];
+    connections: Connection[];
+  } | null>(null);
+  const [loadingUserDetails, setLoadingUserDetails] = useState(false);
+
+  // Reset modal pagination when modal opens and lock/unlock body scroll
+  useEffect(() => {
+    if (selectedUserId) {
+      setModalSkillsPage(1);
+      setModalConnectionsPage(1);
+      document.body.style.overflow = 'hidden';
+      document.documentElement.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+      document.documentElement.style.overflow = '';
+    }
+
+    return () => {
+      document.body.style.overflow = '';
+      document.documentElement.style.overflow = '';
+    };
+  }, [selectedUserId]);
+
+  const fetchUserDetails = async (userId: string) => {
+    if (!user) return;
+    setLoadingUserDetails(true);
+    setSelectedUserId(userId);
+    setUserDetails(null);
+
+    try {
+      const token = await user.getIdToken();
+      const response = await fetch(`/api/admin/user-details?userId=${userId}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+      const data = await response.json();
+      if (data.success) {
+        setUserDetails(data.data);
+      } else {
+        alert('Failed to load user details');
+      }
+    } catch (error) {
+      console.error('Error loading user details:', error);
+      alert('Error loading user details');
+    } finally {
+      setLoadingUserDetails(false);
     }
   };
 
@@ -491,7 +640,8 @@ export default function AdminDashboardPage() {
       const query = searchQuery.toLowerCase();
       filtered = filtered.filter(u =>
         u.email?.toLowerCase().includes(query) ||
-        u.displayName?.toLowerCase().includes(query)
+        u.displayName?.toLowerCase().includes(query) ||
+        u.skills?.some(skill => skill.toLowerCase().includes(query))
       );
     }
 
@@ -1201,15 +1351,54 @@ export default function AdminDashboardPage() {
                     <p className="text-sm text-[#00245D]/60 mt-1">Manage users, assign admin roles, and monitor onboarding status. Use the Invitations tab to invite new users.</p>
                   </div>
 
-                  {/* Search Bar */}
-                  <div className="mb-4">
-                    <input
-                      type="text"
-                      placeholder="Search by email, name, or skills..."
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      className="w-full px-4 py-2 border border-[#D4C4A8] rounded-lg focus:ring-2 focus:ring-[#00245D] focus:border-[#00245D]"
-                    />
+                  {/* Search Bar with Autocomplete */}
+                  <div className="mb-6 relative z-20">
+                    <div className="relative group">
+                      <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                        <span className="text-xl text-[#00245D]/40 group-focus-within:text-[#00245D] transition-colors">🔍</span>
+                      </div>
+                      <input
+                        type="text"
+                        placeholder="Search by email, name, or skills..."
+                        value={searchQuery}
+                        onChange={handleSearchChange}
+                        onFocus={() => searchQuery && setShowSuggestions(true)}
+                        onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
+                        className="w-full pl-12 pr-4 py-4 bg-white border-2 border-[#D4C4A8]/50 rounded-xl focus:ring-4 focus:ring-[#00245D]/10 focus:border-[#00245D] transition-all shadow-sm hover:shadow-md text-lg"
+                      />
+                      {/* Keyboard shortcut hint */}
+                      <div className="absolute right-4 top-1/2 -translate-y-1/2 hidden md:flex items-center gap-1 pointer-events-none opacity-40">
+                        <kbd className="px-2 py-1 bg-gray-100 border border-gray-300 rounded text-xs font-mono">Type to search</kbd>
+                      </div>
+                    </div>
+
+                    {/* Autocomplete Dropdown */}
+                    {showSuggestions && suggestions.length > 0 && (
+                      <div className="mt-2 bg-white rounded-xl border border-[#D4C4A8] overflow-hidden animate-fadeIn shadow-inner">
+                        <div className="px-4 py-2 bg-gray-50 border-b border-[#D4C4A8]/30 text-xs font-semibold text-[#00245D]/60 uppercase tracking-wider">
+                          Suggested Skills
+                        </div>
+                        {suggestions.map((skill, idx) => (
+                          <button
+                            key={idx}
+                            onClick={() => selectSuggestion(skill)}
+                            className="w-full text-left px-4 py-3 hover:bg-[#00245D]/5 transition-colors flex items-center gap-3 group"
+                          >
+                            <span className="w-8 h-8 rounded-lg bg-[#99D6EA]/20 flex items-center justify-center text-sm group-hover:bg-[#00245D] group-hover:text-white transition-colors">
+                              💡
+                            </span>
+                            <div>
+                              <div className="font-medium text-[#00245D] group-hover:translate-x-1 transition-transform">
+                                {skill}
+                              </div>
+                              <div className="text-xs text-[#00245D]/50">
+                                Found in {users.filter(u => u.skills?.includes(skill)).length} users
+                              </div>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
 
                   {/* Filter Buttons */}
@@ -1243,8 +1432,12 @@ export default function AdminDashboardPage() {
                           </tr>
                         ) : (
                           getPaginatedUsers().map(u => (
-                            <tr key={u.id} className="border-b border-[#D4C4A8]/30 hover:bg-[#D4C4A8]/10">
-                              <td className="py-3 px-4 text-sm text-[#00245D]">{u.email}</td>
+                            <tr
+                              key={u.id}
+                              onClick={() => fetchUserDetails(u.id)}
+                              className="border-b border-[#D4C4A8]/30 hover:bg-gradient-to-r hover:from-[#00245D]/5 hover:to-transparent hover:shadow-md hover:-translate-y-0.5 cursor-pointer transition-all duration-200 group relative"
+                            >
+                              <td className="py-3 px-4 text-sm text-[#00245D] font-medium group-hover:text-[#00245D]">{u.email}</td>
                               <td className="py-3 px-4 text-sm text-[#00245D]">{u.displayName || '-'}</td>
                               <td className="py-3 px-4">
                                 {u.invitationId ? (
@@ -1266,8 +1459,66 @@ export default function AdminDashboardPage() {
                                   </span>
                                 )}
                               </td>
-                              <td className="py-3 px-4 text-sm text-center text-[#00245D]">{u.skillsCount}</td>
-                              <td className="py-3 px-4 text-sm text-center text-[#00245D]">{u.connectionsCount}</td>
+                              <td className="py-3 px-4 text-sm text-center">
+                                <div className="flex flex-wrap gap-1 justify-center min-w-[120px]">
+                                  {(() => {
+                                    // Logic to determine which skills to show
+                                    const allSkills = u.skills || [];
+                                    // If searching, prioritize matching skills
+                                    const matchingSkills = searchQuery
+                                      ? allSkills.filter(s => s.toLowerCase().includes(searchQuery.toLowerCase()))
+                                      : [];
+
+                                    // Decide what to display: matches first, then others if space
+                                    // On mobile we might show fewer or rely on horizontal scroll if container allows, but here wrapping is used.
+                                    const displaySkills = matchingSkills.length > 0
+                                      ? matchingSkills
+                                      : allSkills.slice(0, 2);
+
+                                    const remainingCount = allSkills.length - displaySkills.length;
+                                    const hiddenSkills = matchingSkills.length > 0
+                                      ? allSkills.filter(s => !matchingSkills.includes(s))
+                                      : allSkills.slice(2);
+
+                                    if (allSkills.length === 0) {
+                                      return <span className="opacity-30 text-[#00245D]">-</span>;
+                                    }
+
+                                    return (
+                                      <>
+                                        {displaySkills.slice(0, 2).map((skill, idx) => {
+                                          const isMatch = searchQuery && skill.toLowerCase().includes(searchQuery.toLowerCase());
+                                          return (
+                                            <span
+                                              key={idx}
+                                              className={`inline-flex px-2 py-1 rounded text-xs font-medium border ${isMatch
+                                                ? 'bg-yellow-100 text-yellow-800 border-yellow-200 shadow-sm animate-pulse-slow'
+                                                : 'bg-[#99D6EA]/10 text-[#00245D] border-[#99D6EA]/30'
+                                                }`}
+                                            >
+                                              {skill}
+                                            </span>
+                                          );
+                                        })}
+                                        {remainingCount > 0 && (
+                                          <span
+                                            className="inline-flex px-2 py-1 rounded text-xs font-medium bg-gray-100 text-gray-500 border border-gray-200 cursor-help transition-colors hover:bg-gray-200"
+                                            onMouseEnter={(e) => handleTooltipEnter(e, hiddenSkills)}
+                                            onMouseLeave={handleTooltipLeave}
+                                          >
+                                            +{remainingCount}
+                                          </span>
+                                        )}
+                                      </>
+                                    );
+                                  })()}
+                                </div>
+                              </td>
+                              <td className="py-3 px-4 text-sm text-center text-[#00245D]">
+                                <span className={`inline-block px-2 py-0.5 rounded ${u.connectionsCount > 0 ? 'bg-[#D4C4A8]/20 border border-[#D4C4A8]/50' : 'opacity-50'}`}>
+                                  {u.connectionsCount}
+                                </span>
+                              </td>
 
                               <td className="py-3 px-4 text-center">
                                 {u.isPrimaryAdmin ? (
@@ -1276,18 +1527,18 @@ export default function AdminDashboardPage() {
                                   </span>
                                 ) : u.isAdmin ? (
                                   <button
-                                    onClick={() => toggleUserAdmin(u.id, u.isAdmin)}
+                                    onClick={(e) => { e.stopPropagation(); toggleUserAdmin(u.id, u.isAdmin); }}
                                     disabled={togglingAdmin === u.id || u.id === user?.uid}
-                                    className="px-3 py-1 rounded text-xs font-medium bg-[#00245D] text-white hover:bg-[#00245D]/80 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                    className="px-3 py-1 rounded text-xs font-medium bg-[#00245D] text-white hover:bg-[#00245D]/80 transition-colors disabled:opacity-50 disabled:cursor-not-allowed z-10 relative"
                                     title={u.id === user?.uid ? "Cannot change your own admin status" : "Click to remove admin"}
                                   >
                                     {togglingAdmin === u.id ? '...' : '👑 Admin'}
                                   </button>
                                 ) : (
                                   <button
-                                    onClick={() => toggleUserAdmin(u.id, u.isAdmin)}
+                                    onClick={(e) => { e.stopPropagation(); toggleUserAdmin(u.id, u.isAdmin); }}
                                     disabled={togglingAdmin === u.id}
-                                    className="px-3 py-1 rounded text-xs font-medium bg-gray-100 text-gray-600 hover:bg-[#99D6EA] hover:text-[#00245D] transition-colors disabled:opacity-50"
+                                    className="px-3 py-1 rounded text-xs font-medium bg-gray-100 text-gray-600 hover:bg-[#99D6EA] hover:text-[#00245D] transition-colors disabled:opacity-50 z-10 relative"
                                     title="Click to make admin"
                                   >
                                     {togglingAdmin === u.id ? '...' : 'Make Admin'}
@@ -1296,9 +1547,9 @@ export default function AdminDashboardPage() {
                               </td>
                               <td className="py-3 px-4 text-center">
                                 <button
-                                  onClick={() => setShowDeleteConfirm(u.id)}
+                                  onClick={(e) => { e.stopPropagation(); setShowDeleteConfirm(u.id); }}
                                   disabled={u.id === user?.uid}
-                                  className="px-3 py-1 bg-red-500 text-white rounded text-xs font-medium hover:bg-red-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                  className="px-3 py-1 bg-red-500 text-white rounded text-xs font-medium hover:bg-red-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed z-10 relative"
                                 >
                                   Delete
                                 </button>
@@ -1928,7 +2179,405 @@ export default function AdminDashboardPage() {
             </div>
           )
         }
+
+        {/* User Details Modal - Premium Redesign */}
+        {selectedUserId && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-start sm:items-center justify-center z-[60] p-2 sm:p-4 overflow-y-auto">
+            <div className="bg-gradient-to-br from-white to-gray-50 rounded-2xl shadow-2xl w-full max-w-5xl my-auto overflow-hidden flex flex-col border border-[#D4C4A8]/50" style={{ maxHeight: 'min(95vh, 900px)' }}>
+              {loadingUserDetails ? (
+                <div className="p-16 flex flex-col justify-center items-center gap-4">
+                  <div className="animate-spin rounded-full h-16 w-16 border-4 border-[#00245D]/20 border-t-[#00245D]"></div>
+                  <p className="text-[#00245D]/60 animate-pulse">Loading user profile...</p>
+                </div>
+              ) : userDetails ? (
+                <>
+                  {/* Hero Header - Compact and Responsive */}
+                  <div className="relative shrink-0 bg-gradient-to-r from-[#00245D] via-[#003380] to-[#00245D] px-4 py-4 sm:px-6 sm:py-5 text-white overflow-hidden">
+                    {/* Background Pattern */}
+                    <div className="absolute inset-0 opacity-10">
+                      <div className="absolute top-0 right-0 w-64 h-64 bg-white rounded-full blur-3xl transform translate-x-1/2 -translate-y-1/2"></div>
+                      <div className="absolute bottom-0 left-0 w-48 h-48 bg-[#99D6EA] rounded-full blur-3xl transform -translate-x-1/2 translate-y-1/2"></div>
+                    </div>
+
+                    {/* Close Button */}
+                    <button
+                      onClick={() => setSelectedUserId(null)}
+                      className="absolute top-3 right-3 sm:top-4 sm:right-4 w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-all hover:scale-110 z-10"
+                    >
+                      <span className="text-lg sm:text-xl">✕</span>
+                    </button>
+
+                    <div className="relative flex items-center gap-3 sm:gap-5">
+                      {/* Avatar - Fixed size, never shrinks */}
+                      <div className="relative shrink-0">
+                        {(userDetails.user as any).profilePhoto ? (
+                          <img
+                            src={(userDetails.user as any).profilePhoto}
+                            alt="Profile"
+                            className="w-24 h-24 sm:w-32 sm:h-32 rounded-xl object-cover border-2 sm:border-4 border-white/20 shadow-xl"
+                          />
+                        ) : (
+                          <div className="w-24 h-24 sm:w-32 sm:h-32 rounded-xl bg-gradient-to-br from-[#99D6EA] to-[#D4C4A8] flex items-center justify-center text-3xl sm:text-5xl font-bold text-[#00245D] border-2 sm:border-4 border-white/20 shadow-xl">
+                            {userDetails.user.displayName
+                              ? userDetails.user.displayName[0].toUpperCase()
+                              : userDetails.user.email[0].toUpperCase()}
+                          </div>
+                        )}
+                        {userDetails.user.isAdmin && (
+                          <div className="absolute -bottom-1 -right-1 sm:-bottom-2 sm:-right-2 w-8 h-8 sm:w-10 sm:h-10 bg-yellow-400 rounded-full flex items-center justify-center shadow-lg border-2 border-white">
+                            <span className="text-sm sm:text-base">👑</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* User Info */}
+                      <div className="flex-1 min-w-0 pr-8 sm:pr-12">
+                        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 mb-0.5 sm:mb-1">
+                          <h2 className="text-xl sm:text-3xl font-bold break-words">
+                            {userDetails.user.displayName || `${(userDetails.user as any).firstName || ''} ${(userDetails.user as any).lastName || ''}`.trim() || 'No Name'}
+                          </h2>
+                          {userDetails.user.isPrimaryAdmin && (
+                            <span className="px-1.5 sm:px-2 py-0.5 bg-yellow-400 text-yellow-900 text-[10px] sm:text-xs font-bold rounded-full">PRIMARY</span>
+                          )}
+                        </div>
+                        <p className="text-white/70 text-xs sm:text-sm truncate mb-2 sm:mb-3">{userDetails.user.email}</p>
+
+                        {/* Quick Stats - Compact on mobile */}
+                        <div className="flex flex-wrap gap-1.5 sm:gap-2">
+                          <div className="flex items-center gap-1 sm:gap-1.5 bg-white/10 px-2 sm:px-3 py-1 rounded-full text-xs sm:text-sm">
+                            <span>💡</span>
+                            <span className="font-semibold">{userDetails.skills.length}</span>
+                            <span className="text-white/60 hidden sm:inline">Skills</span>
+                          </div>
+                          <div className="flex items-center gap-1 sm:gap-1.5 bg-white/10 px-2 sm:px-3 py-1 rounded-full text-xs sm:text-sm">
+                            <span>🤝</span>
+                            <span className="font-semibold">{userDetails.connections.length}</span>
+                            <span className="text-white/60 hidden sm:inline">Connections</span>
+                          </div>
+                          <div className={`flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1 rounded-full text-xs sm:text-sm ${userDetails.user.onboardingComplete ? 'bg-green-500/20' : 'bg-amber-500/20'}`}>
+                            <span>{userDetails.user.onboardingComplete ? '✓' : '⏳'}</span>
+                            <span className="hidden sm:inline">{userDetails.user.onboardingComplete ? 'Onboarded' : 'Pending'}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Content Body - Scrollable */}
+                  <div className="flex-1 min-h-0 overflow-y-auto p-3 sm:p-4 md:p-6 space-y-4 sm:space-y-6">
+
+                    {/* Personal Information Card */}
+                    <div className="bg-white rounded-lg sm:rounded-xl border border-[#D4C4A8]/50 shadow-sm overflow-hidden">
+                      <div className="px-3 sm:px-4 md:px-6 py-2.5 sm:py-3 border-b border-[#D4C4A8]/30 bg-gradient-to-r from-[#00245D]/5 to-transparent">
+                        <h3 className="text-sm sm:text-base md:text-lg font-bold text-[#00245D] flex items-center gap-2">
+                          <span className="w-6 h-6 sm:w-7 sm:h-7 bg-[#00245D]/10 rounded-lg flex items-center justify-center text-sm">👤</span>
+                          Personal Information
+                        </h3>
+                      </div>
+                      <div className="p-3 sm:p-4 md:p-6 grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 sm:gap-3 md:gap-4">
+                        {/* First Name */}
+                        <div className="space-y-0.5">
+                          <label className="text-[10px] sm:text-xs font-semibold text-[#00245D]/50 uppercase tracking-wider">First Name</label>
+                          <p className="text-sm sm:text-base font-medium text-[#00245D] truncate">{(userDetails.user as any).firstName || '-'}</p>
+                        </div>
+                        {/* Last Name */}
+                        <div className="space-y-0.5">
+                          <label className="text-[10px] sm:text-xs font-semibold text-[#00245D]/50 uppercase tracking-wider">Last Name</label>
+                          <p className="text-sm sm:text-base font-medium text-[#00245D] truncate">{(userDetails.user as any).lastName || '-'}</p>
+                        </div>
+                        {/* Display Name */}
+                        <div className="space-y-0.5">
+                          <label className="text-[10px] sm:text-xs font-semibold text-[#00245D]/50 uppercase tracking-wider">Display Name</label>
+                          <p className="text-sm sm:text-base font-medium text-[#00245D] truncate">{userDetails.user.displayName || '-'}</p>
+                        </div>
+                        {/* Email */}
+                        <div className="space-y-0.5 col-span-2 lg:col-span-1">
+                          <label className="text-[10px] sm:text-xs font-semibold text-[#00245D]/50 uppercase tracking-wider">Email</label>
+                          <p className="text-sm sm:text-base font-medium text-[#00245D] truncate">{userDetails.user.email}</p>
+                        </div>
+                        {/* Phone */}
+                        <div className="space-y-0.5">
+                          <label className="text-[10px] sm:text-xs font-semibold text-[#00245D]/50 uppercase tracking-wider">Phone</label>
+                          <p className="text-sm sm:text-base font-medium text-[#00245D] truncate">{(userDetails.user as any).phoneNumber || '-'}</p>
+                        </div>
+                        {/* Location */}
+                        <div className="space-y-0.5">
+                          <label className="text-[10px] sm:text-xs font-semibold text-[#00245D]/50 uppercase tracking-wider">Location</label>
+                          <p className="text-sm sm:text-base font-medium text-[#00245D] truncate">{(userDetails.user as any).location || '-'}</p>
+                        </div>
+                        {/* LinkedIn */}
+                        <div className="space-y-0.5">
+                          <label className="text-[10px] sm:text-xs font-semibold text-[#00245D]/50 uppercase tracking-wider">LinkedIn</label>
+                          {(userDetails.user as any).linkedinUrl ? (
+                            <a
+                              href={(userDetails.user as any).linkedinUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-sm sm:text-base font-medium text-blue-600 hover:underline truncate block"
+                            >
+                              View ↗
+                            </a>
+                          ) : (
+                            <p className="text-sm sm:text-base font-medium text-[#00245D]">-</p>
+                          )}
+                        </div>
+                        {/* Bio - Full Width */}
+                        {(userDetails.user as any).bio && (
+                          <div className="space-y-0.5 col-span-2 lg:col-span-3">
+                            <label className="text-[10px] sm:text-xs font-semibold text-[#00245D]/50 uppercase tracking-wider">Bio</label>
+                            <p className="text-xs sm:text-sm font-medium text-[#00245D] bg-[#00245D]/5 p-2 sm:p-3 rounded-lg leading-relaxed">
+                              {(userDetails.user as any).bio}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Account Information Card */}
+                    <div className="bg-white rounded-lg sm:rounded-xl border border-[#D4C4A8]/50 shadow-sm overflow-hidden">
+                      <div className="px-3 sm:px-4 md:px-6 py-2.5 sm:py-3 border-b border-[#D4C4A8]/30 bg-gradient-to-r from-[#99D6EA]/10 to-transparent">
+                        <h3 className="text-sm sm:text-base md:text-lg font-bold text-[#00245D] flex items-center gap-2">
+                          <span className="w-6 h-6 sm:w-7 sm:h-7 bg-[#99D6EA]/20 rounded-lg flex items-center justify-center text-sm">⚙️</span>
+                          Account Information
+                        </h3>
+                      </div>
+                      <div className="p-3 sm:p-4 md:p-6 grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3 md:gap-4">
+                        {/* User ID */}
+
+                        {/* Joined Date */}
+                        <div className="space-y-0.5">
+                          <label className="text-[10px] sm:text-xs font-semibold text-[#00245D]/50 uppercase tracking-wider">Joined Date</label>
+                          <p className="text-sm sm:text-base font-medium text-[#00245D]">
+                            {formatDate(userDetails.user.createdAt)}
+                          </p>
+                        </div>
+                        {/* Join Method */}
+                        <div className="space-y-0.5">
+                          <label className="text-[10px] sm:text-xs font-semibold text-[#00245D]/50 uppercase tracking-wider">Join Method</label>
+                          <p className="text-xs sm:text-sm font-medium text-[#00245D]">
+                            {userDetails.user.invitationId
+                              ? (userDetails.user.invitationType === 'public' ? '🌐 Public Link' : '📧 Personal Invite')
+                              : '👤 Direct Sign-up'}
+                          </p>
+                        </div>
+                        {/* Admin Status */}
+                        <div className="space-y-0.5">
+                          <label className="text-[10px] sm:text-xs font-semibold text-[#00245D]/50 uppercase tracking-wider">Admin Status</label>
+                          <div className="flex items-center gap-1.5">
+                            {userDetails.user.isPrimaryAdmin ? (
+                              <span className="px-1.5 sm:px-2 py-0.5 sm:py-1 bg-yellow-100 text-yellow-800 rounded-full text-[10px] sm:text-xs font-bold">👑 Primary</span>
+                            ) : userDetails.user.isAdmin ? (
+                              <span className="px-1.5 sm:px-2 py-0.5 sm:py-1 bg-[#00245D] text-white rounded-full text-[10px] sm:text-xs font-bold">Admin</span>
+                            ) : (
+                              <span className="px-1.5 sm:px-2 py-0.5 sm:py-1 bg-gray-100 text-gray-600 rounded-full text-[10px] sm:text-xs font-medium">Member</span>
+                            )}
+                          </div>
+                        </div>
+                        {/* Onboarding Status */}
+                        <div className="space-y-0.5">
+                          <label className="text-[10px] sm:text-xs font-semibold text-[#00245D]/50 uppercase tracking-wider">Onboarding</label>
+                          <div className={`flex w-fit items-center gap-1 sm:gap-1.5 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-medium ${userDetails.user.onboardingComplete
+                            ? 'bg-green-100 text-green-700'
+                            : 'bg-amber-100 text-amber-700'
+                            }`}>
+                            <span>{userDetails.user.onboardingComplete ? '✓' : '⏳'}</span>
+                            {userDetails.user.onboardingComplete ? 'Completed' : 'Pending'}
+                          </div>
+                        </div>
+                        {/* Invited By */}
+                        {(userDetails.user as any).invitedBy && (
+                          <div className="space-y-0.5 col-span-2 lg:col-span-1">
+                            <label className="text-[10px] sm:text-xs font-semibold text-[#00245D]/50 uppercase tracking-wider">Invited By</label>
+                            <p className="font-mono text-[10px] sm:text-xs text-[#00245D] bg-gray-100 p-1.5 sm:p-2 rounded truncate">{(userDetails.user as any).invitedBy}</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Skills Section with Pagination */}
+                    <div className="bg-white rounded-lg sm:rounded-xl border border-[#D4C4A8]/50 shadow-sm overflow-hidden">
+                      <div className="px-3 sm:px-4 md:px-6 py-2.5 sm:py-3 border-b border-[#D4C4A8]/30 bg-gradient-to-r from-yellow-50 to-transparent flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1.5 sm:gap-2">
+                        <h3 className="text-sm sm:text-base md:text-lg font-bold text-[#00245D] flex items-center gap-1.5 sm:gap-2">
+                          <span className="w-6 h-6 sm:w-7 sm:h-7 bg-yellow-100 rounded-lg flex items-center justify-center text-sm">💡</span>
+                          Skills & Expertise
+                          <span className="text-[10px] sm:text-xs font-normal text-[#00245D]/50">({userDetails.skills.length})</span>
+                        </h3>
+                        {/* Skills Pagination */}
+                        {userDetails.skills.length > 6 && (
+                          <div className="flex items-center gap-1.5 text-xs sm:text-sm">
+                            <span className="text-[#00245D]/50 hidden sm:inline">Page:</span>
+                            {Array.from({ length: Math.ceil(userDetails.skills.length / 6) }, (_, i) => (
+                              <button
+                                key={i}
+                                onClick={() => setModalSkillsPage(i + 1)}
+                                className={`w-6 h-6 sm:w-7 sm:h-7 rounded-md sm:rounded-lg font-medium transition-colors text-xs ${modalSkillsPage === i + 1
+                                  ? 'bg-[#00245D] text-white'
+                                  : 'bg-gray-100 text-[#00245D] hover:bg-gray-200'
+                                  }`}
+                              >
+                                {i + 1}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      <div className="p-3 sm:p-4 md:p-6">
+                        {userDetails.skills.length > 0 ? (
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-3">
+                            {userDetails.skills
+                              .slice((modalSkillsPage - 1) * 6, modalSkillsPage * 6)
+                              .map((skill, idx) => (
+                                <div
+                                  key={idx}
+                                  className="group p-2.5 sm:p-3 md:p-4 bg-gradient-to-br from-white to-gray-50 border border-[#D4C4A8]/50 rounded-lg sm:rounded-xl hover:border-[#00245D] hover:shadow-md transition-all"
+                                >
+                                  <div className="flex items-start justify-between gap-1.5 sm:gap-2 mb-1 sm:mb-2">
+                                    <h4 className="text-sm sm:text-base font-semibold text-[#00245D] group-hover:text-[#003380] transition-colors break-words">{skill.skillName}</h4>
+                                    <span className={`shrink-0 px-1.5 sm:px-2 py-0.5 rounded-full text-[8px] sm:text-[10px] font-bold uppercase tracking-wider ${skill.willingnessLevel === 'pro_bono' ? 'bg-green-100 text-green-700' :
+                                      skill.willingnessLevel === 'discount' ? 'bg-blue-100 text-blue-700' :
+                                        skill.willingnessLevel === 'sponsor' ? 'bg-purple-100 text-purple-700' :
+                                          skill.willingnessLevel === 'advice' ? 'bg-amber-100 text-amber-700' :
+                                            'bg-gray-100 text-gray-700'
+                                      }`}>
+                                      {skill.willingnessLevel.replace('_', ' ')}
+                                    </span>
+                                  </div>
+                                  <p className="text-[10px] sm:text-xs text-[#00245D]/50">{skill.category}</p>
+                                  {skill.isHobby && (
+                                    <span className="mt-1 sm:mt-2 inline-block text-[10px] sm:text-xs text-purple-600 bg-purple-50 px-1.5 sm:px-2 py-0.5 rounded">🎨 Hobby</span>
+                                  )}
+                                </div>
+                              ))}
+                          </div>
+                        ) : (
+                          <div className="text-center py-8 sm:py-12 bg-gray-50 rounded-lg sm:rounded-xl">
+                            <div className="text-3xl sm:text-4xl mb-2">💡</div>
+                            <p className="text-sm sm:text-base text-[#00245D]/50 font-medium">No skills listed yet</p>
+                            <p className="text-xs sm:text-sm text-[#00245D]/30">User hasn&apos;t added any skills to their profile</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Connections Section with Pagination */}
+                    <div className="bg-white rounded-lg sm:rounded-xl border border-[#D4C4A8]/50 shadow-sm overflow-hidden">
+                      <div className="px-3 sm:px-4 md:px-6 py-2.5 sm:py-3 border-b border-[#D4C4A8]/30 bg-gradient-to-r from-[#99D6EA]/10 to-transparent flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1.5 sm:gap-2">
+                        <h3 className="text-sm sm:text-base md:text-lg font-bold text-[#00245D] flex items-center gap-1.5 sm:gap-2">
+                          <span className="w-6 h-6 sm:w-7 sm:h-7 bg-[#99D6EA]/30 rounded-lg flex items-center justify-center text-sm">🤝</span>
+                          Connections & Network
+                          <span className="text-[10px] sm:text-xs font-normal text-[#00245D]/50">({userDetails.connections.length})</span>
+                        </h3>
+                        {/* Connections Pagination */}
+                        {userDetails.connections.length > 6 && (
+                          <div className="flex items-center gap-1.5 text-xs sm:text-sm">
+                            <span className="text-[#00245D]/50 hidden sm:inline">Page:</span>
+                            {Array.from({ length: Math.ceil(userDetails.connections.length / 6) }, (_, i) => (
+                              <button
+                                key={i}
+                                onClick={() => setModalConnectionsPage(i + 1)}
+                                className={`w-6 h-6 sm:w-7 sm:h-7 rounded-md sm:rounded-lg font-medium transition-colors text-xs ${modalConnectionsPage === i + 1
+                                  ? 'bg-[#00245D] text-white'
+                                  : 'bg-gray-100 text-[#00245D] hover:bg-gray-200'
+                                  }`}
+                              >
+                                {i + 1}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      <div className="p-3 sm:p-4 md:p-6">
+                        {userDetails.connections.length > 0 ? (
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-3">
+                            {userDetails.connections
+                              .slice((modalConnectionsPage - 1) * 6, modalConnectionsPage * 6)
+                              .map((conn, idx) => (
+                                <div
+                                  key={idx}
+                                  className="group p-2.5 sm:p-3 md:p-4 bg-gradient-to-br from-white to-gray-50 border border-[#D4C4A8]/50 rounded-lg sm:rounded-xl hover:border-[#00245D] hover:shadow-md transition-all"
+                                >
+                                  <div className="flex items-start justify-between gap-1.5 sm:gap-2 mb-1 sm:mb-2">
+                                    <h4 className="text-sm sm:text-base font-semibold text-[#00245D] group-hover:text-[#003380] transition-colors break-words">{conn.organizationName}</h4>
+                                    <span className={`shrink-0 px-1.5 sm:px-2 py-0.5 rounded-full text-[8px] sm:text-[10px] font-bold uppercase tracking-wider ${conn.relationshipStrength === 'decision_maker' ? 'bg-green-100 text-green-700' :
+                                      conn.relationshipStrength === 'strong_contact' ? 'bg-blue-100 text-blue-700' :
+                                        'bg-gray-100 text-gray-700'
+                                      }`}>
+                                      {conn.relationshipStrength.replace('_', ' ')}
+                                    </span>
+                                  </div>
+                                  <p className="text-[10px] sm:text-xs text-[#00245D]/50 mb-1 sm:mb-2">{conn.sector}</p>
+                                  {conn.contactName && (
+                                    <p className="text-[10px] sm:text-xs text-[#00245D]/70 flex items-center gap-1">
+                                      <span>👤</span> {conn.contactName}
+                                    </p>
+                                  )}
+                                </div>
+                              ))}
+                          </div>
+                        ) : (
+                          <div className="text-center py-8 sm:py-12 bg-gray-50 rounded-lg sm:rounded-xl">
+                            <div className="text-3xl sm:text-4xl mb-2">🤝</div>
+                            <p className="text-sm sm:text-base text-[#00245D]/50 font-medium">No connections listed yet</p>
+                            <p className="text-xs sm:text-sm text-[#00245D]/30">User hasn&apos;t added any connections to their profile</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Footer */}
+                  <div className="shrink-0 px-3 sm:px-4 md:px-6 py-2.5 sm:py-3 border-t border-[#D4C4A8]/30 bg-gray-50 flex flex-col sm:flex-row items-center justify-between gap-2 sm:gap-3">
+                    <p className="text-[10px] sm:text-xs text-[#00245D]/40">
+                      Last updated: {formatDateTime(userDetails.user.updatedAt)}
+                    </p>
+                    <button
+                      onClick={() => setSelectedUserId(null)}
+                      className="w-full sm:w-auto px-6 sm:px-8 py-2 sm:py-2.5 bg-[#00245D] text-white rounded-lg sm:rounded-xl text-sm sm:text-base font-semibold hover:bg-[#003380] transition-colors shadow-lg shadow-[#00245D]/20"
+                    >
+                      Close
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <div className="p-8 sm:p-16 text-center">
+                  <div className="text-4xl sm:text-6xl mb-4">😞</div>
+                  <p className="text-sm sm:text-lg text-[#00245D]/60 font-medium">User not found or failed to load.</p>
+                  <button
+                    onClick={() => setSelectedUserId(null)}
+                    className="mt-4 sm:mt-6 px-4 sm:px-6 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm sm:text-base font-medium hover:bg-gray-200 transition-colors"
+                  >
+                    Close
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
       </div >
+
+      {/* Floating Skill Tooltip */}
+      {skillTooltip.visible && (
+        <div
+          className="fixed z-[100] bg-white border border-[#D4C4A8] rounded-xl shadow-2xl p-4 animate-fadeIn max-w-xs pointer-events-none ring-1 ring-[#00245D]/5"
+          style={{
+            left: `${skillTooltip.x}px`,
+            top: `${skillTooltip.y + 10}px`,
+            transform: 'translateX(-50%)'
+          }}
+        >
+          <div className="text-[10px] font-bold text-[#00245D]/40 mb-2 uppercase tracking-widest border-b border-[#D4C4A8]/20 pb-1">
+            More Skills
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {skillTooltip.skills.map((skill, idx) => (
+              <span key={idx} className="px-2 py-1 bg-[#F0F7FA] text-[#00245D] rounded-md text-xs font-medium border border-[#99D6EA]/20 shadow-sm">
+                {skill}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
     </ProtectedRoute >
   );
 }

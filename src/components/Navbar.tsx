@@ -36,7 +36,7 @@ export default function Navbar() {
               className="group"
             >
               <Logo
-                size="lg"
+                size="header"
                 showText={true}
                 className="group-hover:scale-105 transition-transform"
               />

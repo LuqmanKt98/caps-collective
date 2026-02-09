@@ -302,24 +302,15 @@ h6 {
   background: linear-gradient(135deg, var(--wfc-tan-dark), var(--wfc-tan));
 }
 
-/* Scrollbar Styling - Whitecaps themed */
+/* Scrollbar Styling - Hidden but scrollable */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  display: none;
 }
 
-::-webkit-scrollbar-track {
-  background: var(--wfc-tan-light);
-  border-radius: 4px;
-}
-
-::-webkit-scrollbar-thumb {
-  background: var(--wfc-tan-dark);
-  border-radius: 4px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: var(--wfc-navy-light);
+/* Hide scrollbar for IE, Edge and Firefox */
+html, body {
+  -ms-overflow-style: none; /* IE and Edge */
+  scrollbar-width: none; /* Firefox */
 }
 
 /* Whitecaps Brand Utilities */

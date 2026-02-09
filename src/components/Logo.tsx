@@ -3,7 +3,7 @@
 import Image from 'next/image';
 
 interface LogoProps {
-  size?: 'sm' | 'md' | 'lg' | 'xl' | 'hero';
+  size?: 'sm' | 'md' | 'lg' | 'header' | 'xl' | 'hero';
   showText?: boolean;
   className?: string;
   centered?: boolean;
@@ -13,6 +13,7 @@ const sizeMap = {
   sm: { logo: 48, text: 'text-lg' },
   md: { logo: 64, text: 'text-xl' },
   lg: { logo: 100, text: 'text-2xl' },
+  header: { logo: 80, text: 'text-2xl' },
   xl: { logo: 140, text: 'text-3xl' },
   hero: { logo: 200, text: 'text-4xl' },
 };

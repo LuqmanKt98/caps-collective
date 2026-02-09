@@ -85,21 +85,32 @@ export async function GET(request: NextRequest) {
         const needs = needsData.documents || [];
         const invitations = invitationsData.documents || [];
 
+        // Extract active user IDs to filter orphaned data
+        const activeUserIds = new Set(users.map((u: any) => {
+            const pathParts = u.name.split('/');
+            return pathParts[pathParts.length - 1];
+        }));
+
+        // Filter collections to remove orphaned data
+        const activeSkills = skills.filter((s: any) => activeUserIds.has(s.fields?.userId?.stringValue));
+        const activeConnections = connections.filter((c: any) => activeUserIds.has(c.fields?.userId?.stringValue));
+        const activeNeedsData = needs.filter((n: any) => activeUserIds.has(n.fields?.createdBy?.stringValue));
+
         // Calculate totals
         const totalUsers = users.length;
         const totalAdmins = users.filter((u: any) => u.fields?.isAdmin?.booleanValue).length;
         const onboardedUsers = users.filter((u: any) => u.fields?.onboardingComplete?.booleanValue).length;
         const pendingOnboarding = totalUsers - onboardedUsers;
-        const totalSkills = skills.length;
-        const totalConnections = connections.length;
-        const totalNeeds = needs.length;
-        const activeNeeds = needs.filter((n: any) => n.fields?.isActive?.booleanValue !== false).length;
+        const totalSkills = activeSkills.length;
+        const totalConnections = activeConnections.length;
+        const totalNeeds = activeNeedsData.length;
+        const activeNeeds = activeNeedsData.filter((n: any) => n.fields?.isActive?.booleanValue !== false).length;
         const pendingInvitations = invitations.filter((i: any) => i.fields?.status?.stringValue === 'pending').length;
         const acceptedInvitations = invitations.filter((i: any) => i.fields?.status?.stringValue === 'accepted').length;
 
         // Top skill categories
         const skillCategoryCounts: Record<string, number> = {};
-        skills.forEach((skill: any) => {
+        activeSkills.forEach((skill: any) => {
             const category = skill.fields?.category?.stringValue;
             if (category) {
                 skillCategoryCounts[category] = (skillCategoryCounts[category] || 0) + 1;
@@ -112,7 +123,7 @@ export async function GET(request: NextRequest) {
 
         // Top connection sectors
         const connectionSectorCounts: Record<string, number> = {};
-        connections.forEach((conn: any) => {
+        activeConnections.forEach((conn: any) => {
             const sector = conn.fields?.sector?.stringValue;
             if (sector) {
                 connectionSectorCounts[sector] = (connectionSectorCounts[sector] || 0) + 1;

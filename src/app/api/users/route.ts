@@ -42,14 +42,22 @@ export async function GET(request: NextRequest) {
             adminDb.collection('connections').get(),
         ]);
 
-        // Count skills and connections per user
+        // Count skills and connections per user, and collect skill names
         const skillsCounts: Record<string, number> = {};
+        const skillsMap: Record<string, string[]> = {};
         const connectionsCounts: Record<string, number> = {};
 
         skillsSnapshot.forEach((doc) => {
-            const uid = doc.data().userId;
+            const data = doc.data();
+            const uid = data.userId;
             if (uid) {
                 skillsCounts[uid] = (skillsCounts[uid] || 0) + 1;
+                if (!skillsMap[uid]) {
+                    skillsMap[uid] = [];
+                }
+                if (data.skillName) {
+                    skillsMap[uid].push(data.skillName);
+                }
             }
         });
 
@@ -76,6 +84,7 @@ export async function GET(request: NextRequest) {
                 connectionsCount: connectionsCounts[doc.id] || 0,
                 invitationId: data.invitationId || null,
                 invitationType: data.invitationType || null,
+                skills: skillsMap[doc.id] || [],
             } as UserWithStats;
         });
 

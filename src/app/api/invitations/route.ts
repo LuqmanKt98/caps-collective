@@ -36,9 +36,10 @@ export async function GET(request: NextRequest) {
         // Use Vercel production URL (not preview), or configured base URL, or localhost for dev
         // VERCEL_PROJECT_PRODUCTION_URL gives clean domain like "caps-collective.vercel.app"
         // VERCEL_URL gives preview URLs like "caps-collective-git-main-xxx.vercel.app"
-        const baseUrl = process.env.VERCEL_PROJECT_PRODUCTION_URL
-            ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
-            : process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
+        // Use custom domain for production, preview URL for non-prod Vercel, or localhost for dev
+        const baseUrl = process.env.VERCEL_ENV === 'production'
+            ? 'https://www.capscollective.ca'
+            : (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : (process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'));
 
         const invitations: InvitationWithDetails[] = await Promise.all(
             invitationsSnapshot.docs.map(async (doc) => {
@@ -166,9 +167,10 @@ export async function POST(request: NextRequest) {
 
         // Generate invitation link
         // Use Vercel production URL (not preview), or configured base URL, or localhost for dev
-        const baseUrl = process.env.VERCEL_PROJECT_PRODUCTION_URL
-            ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
-            : process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
+        // Use custom domain for production, preview URL for non-prod Vercel, or localhost for dev
+        const baseUrl = process.env.VERCEL_ENV === 'production'
+            ? 'https://www.capscollective.ca'
+            : (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : (process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'));
         const invitationLink = `${baseUrl}/register?invitation=${invitationToken}`;
 
         // Create invitation document

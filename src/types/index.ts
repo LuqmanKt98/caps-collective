@@ -242,6 +242,7 @@ export interface UserWithStats {
   connectionsCount: number;
   invitationId?: string;
   invitationType?: 'personal' | 'public';
+  skills?: string[];
 }
 
 // Invitation with detailed tracking
